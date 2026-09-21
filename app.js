@@ -5,6 +5,7 @@
   const ENDPOINT = CONFIG.endpoint || '/api/griel';
   const LIVE_POLL_MS = CONFIG.livePollMs || 15000;
   const MATCH_POLL_MS = CONFIG.matchPollMs || 15000;
+  const STALE_AFTER_MS = CONFIG.staleAfterMs || 35000;
 
   const $ = (s, root = document) => root.querySelector(s);
   const $$ = (s, root = document) => [...root.querySelectorAll(s)];
@@ -160,14 +161,30 @@
     if ($('#sideEngineSub')) $('#sideEngineSub').textContent = state.mode === 'live' ? `Sincronizado ${activeAge}` : 'Reconectando...';
   }
 
-  async function api(action, params = {}) {
+  function requestWindowMs(action) {
+    if (action === 'live' || action === 'matchcenter') return 15000;
+    if (action === 'odds') return Math.max(15000, oddsPollMs());
+    return 0;
+  }
+
+  async function api(action, params = {}, options = {}) {
     const url = new URL(ENDPOINT, window.location.origin);
     url.searchParams.set('action', action);
     Object.entries(params).forEach(([key, value]) => {
       if (value !== undefined && value !== null && value !== '') url.searchParams.set(key, value);
     });
 
-    const response = await fetch(url.toString(), { cache:'no-store', headers:{'Accept':'application/json'} });
+    // Cada janela de tempo usa uma chave de cache diferente no CDN.
+    // Isso impede uma resposta antiga de ficar presa por vários minutos e,
+    // ao mesmo tempo, permite que vários clientes compartilhem a mesma chamada.
+    const windowMs = requestWindowMs(action);
+    if (windowMs) url.searchParams.set('_slot', String(Math.floor(Date.now() / windowMs)));
+    if (options.fresh) url.searchParams.set('_fresh', String(Date.now()));
+
+    const response = await fetch(url.toString(), {
+      cache: 'no-store',
+      headers: { 'Accept': 'application/json' }
+    });
     let data;
     try { data = await response.json(); }
     catch { throw new Error(`Resposta inválida do backend (HTTP ${response.status}).`); }
@@ -179,6 +196,16 @@
       error.retryAfterSeconds = data.retryAfterSeconds || 5;
       throw error;
     }
+
+    // Autocorreção: se alguma borda devolver um objeto antigo, faz uma única
+    // chamada de bypass para buscar a fonte novamente.
+    if (!options.fresh && windowMs && data.updatedAt) {
+      const sourceAgeMs = Date.now() - new Date(data.updatedAt).getTime();
+      if (Number.isFinite(sourceAgeMs) && sourceAgeMs > STALE_AFTER_MS) {
+        return api(action, params, { fresh: true });
+      }
+    }
+
     return data;
   }
 
@@ -1062,7 +1089,7 @@
     $('#apiStatus').textContent = 'Testando backend...';
     try {
       const data = await api('health');
-      $('#apiStatus').innerHTML = `<b>Backend operacional.</b><br>Versão ${esc(data.version || '9.0')} • chave ${data.configured?'configurada':'não configurada'} • ${new Date(data.now).toLocaleTimeString('pt-BR')}`;
+      $('#apiStatus').innerHTML = `<b>Backend operacional.</b><br>Versão ${esc(data.version || '10.0')} • chave ${data.configured?'configurada':'não configurada'} • ${new Date(data.now).toLocaleTimeString('pt-BR')}`;
       toast('Backend GRIEL operacional.');
     } catch (error) {
       $('#apiStatus').innerHTML = `<b>Falha no teste.</b><br>${esc(error.message)}`;
