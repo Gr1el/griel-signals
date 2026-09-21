@@ -147,16 +147,131 @@ const historyRowsData = [
 
 const $ = (selector, root = document) => root.querySelector(selector);
 const $$ = (selector, root = document) => [...root.querySelectorAll(selector)];
+
+const LIVE_ENDPOINT = '/api/griel';
 const appState = {
-  matches: structuredClone(demoMatches),
+  matches: [],
   signals: [],
-  mode: (window.GRIEL_CONFIG && window.GRIEL_CONFIG.mode) || 'demo'
+  mode: 'loading',
+  connected: false,
+  lastUpdated: null,
+  liveError: ''
 };
+
+function safeNumber(value, fallback = 0){
+  const n = Number(value);
+  return Number.isFinite(n) ? n : fallback;
+}
+
+function formatOdd(value){
+  const n = Number(value);
+  return Number.isFinite(n) && n > 1 ? n.toFixed(2) : 'Consultar';
+}
+
+function fixtureToMatch(item){
+  const fixture = item.fixture || {};
+  const status = fixture.status || {};
+  const league = item.league || {};
+  const teams = item.teams || {};
+  const goals = item.goals || {};
+  const minute = safeNumber(status.elapsed, 0);
+  const homeGoals = safeNumber(goals.home, 0);
+  const awayGoals = safeNumber(goals.away, 0);
+  return {
+    id: fixture.id,
+    home: teams.home?.name || 'Mandante',
+    away: teams.away?.name || 'Visitante',
+    homeLogo: teams.home?.logo || '',
+    awayLogo: teams.away?.logo || '',
+    league: [league.country, league.name].filter(Boolean).join(' • ') || 'Competição',
+    minute,
+    score: `${homeGoals}-${awayGoals}`,
+    status: status.long || status.short || 'Ao vivo',
+    statusShort: status.short || '',
+    shots: 'sob demanda',
+    onTarget: 'sob demanda',
+    corners: 'sob demanda',
+    cards: 'sob demanda',
+    possession: 'sob demanda',
+    pressure: 'Em análise',
+    markets: buildPreliminaryMarkets({
+      home: teams.home?.name || 'Mandante',
+      away: teams.away?.name || 'Visitante',
+      minute,
+      homeGoals,
+      awayGoals
+    })
+  };
+}
+
+function buildPreliminaryMarkets({home, away, minute, homeGoals, awayGoals}){
+  const total = homeGoals + awayGoals;
+  const markets = [];
+  const lateFactor = Math.min(12, Math.max(0, minute - 55));
+
+  if (minute >= 60 && homeGoals > awayGoals) {
+    markets.push({
+      type: 'Resultado do jogo',
+      bet: `${home} vence`,
+      odd: null,
+      score: Math.min(82, 68 + lateFactor + Math.min(8, (homeGoals-awayGoals)*4)),
+      condition: `${home} precisa terminar o tempo normal vencendo.`,
+      why: [`${home} está vencendo por ${homeGoals}-${awayGoals}`, `Partida está aos ${minute}'`, 'Odd ao vivo disponível ao abrir os mercados'],
+      risk: `${away} ainda pode empatar ou virar. Este é um sinal preliminar baseado em placar e minuto.`
+    });
+  }
+
+  if (minute >= 60 && awayGoals > homeGoals) {
+    markets.push({
+      type: 'Resultado do jogo',
+      bet: `${away} vence`,
+      odd: null,
+      score: Math.min(82, 68 + lateFactor + Math.min(8, (awayGoals-homeGoals)*4)),
+      condition: `${away} precisa terminar o tempo normal vencendo.`,
+      why: [`${away} está vencendo por ${awayGoals}-${homeGoals}`, `Partida está aos ${minute}'`, 'Odd ao vivo disponível ao abrir os mercados'],
+      risk: `${home} ainda pode empatar ou virar. Este é um sinal preliminar baseado em placar e minuto.`
+    });
+  }
+
+  if (minute >= 50 && total === 0) {
+    markets.push({
+      type: 'Gols da partida',
+      bet: 'Over 0.5 gols',
+      odd: null,
+      score: Math.min(76, 60 + Math.max(0, minute-50)),
+      condition: 'Precisa sair pelo menos 1 gol até o fim da partida.',
+      why: [`Placar está 0-0 aos ${minute}'`, 'Mercado ao vivo pode ser consultado no botão de mercados'],
+      risk: 'O jogo pode terminar 0-0. Sem estatísticas detalhadas, este é apenas um sinal preliminar.'
+    });
+  } else if (minute >= 50 && total === 1) {
+    markets.push({
+      type: 'Gols da partida',
+      bet: 'Over 1.5 gols',
+      odd: null,
+      score: Math.min(78, 62 + Math.max(0, minute-50)),
+      condition: 'Precisa sair pelo menos mais 1 gol.',
+      why: [`Já existe 1 gol no jogo`, `Partida está aos ${minute}'`],
+      risk: 'O placar pode permanecer como está.'
+    });
+  } else if (minute >= 45 && total === 2) {
+    markets.push({
+      type: 'Gols da partida',
+      bet: 'Over 2.5 gols',
+      odd: null,
+      score: Math.min(77, 61 + Math.max(0, minute-45)),
+      condition: 'Precisa sair pelo menos mais 1 gol.',
+      why: ['Já existem 2 gols no jogo', `Partida está aos ${minute}'`],
+      risk: 'O jogo pode terminar com apenas 2 gols.'
+    });
+  }
+
+  return markets;
+}
 
 function buildSignalsFromMatches(matches) {
   const list = [];
   matches.forEach(match => {
-    match.markets.forEach((market, index) => {
+    (match.markets || []).forEach((market, index) => {
       list.push({
         id: `${match.id}-${index}`,
         matchId: match.id,
@@ -185,43 +300,34 @@ function buildSignalsFromMatches(matches) {
 }
 
 function parseScore(score){
-  const [home, away] = score.split('-').map(v => parseInt(v.trim(),10));
+  const [home, away] = String(score || '0-0').split('-').map(v => parseInt(v.trim(),10));
   return { homeGoals: home || 0, awayGoals: away || 0, total: (home || 0) + (away || 0) };
 }
 
 function explainBet(signal){
   const score = parseScore(signal.score);
-  const lower = signal.bet.toLowerCase();
+  const lower = String(signal.bet || '').toLowerCase();
   if (lower.includes('vence')) return `${signal.bet} significa que o time indicado precisa vencer a partida no tempo normal.`;
-  if (lower.includes('dupla chance')) return `${signal.bet} significa que 2 resultados cobertos atendem ao mercado.`;
-  if (lower.includes('empate')) return `${signal.bet} depende do resultado final conforme o nome do mercado.`;
-  if (lower.includes('ambas marcam')) return `Os dois times precisam marcar pelo menos 1 gol cada.`;
-  if (lower.includes('over 0.5')) return `Precisa sair pelo menos 1 gol no total.`;
-  if (lower.includes('over 1.5')) return `Precisa sair pelo menos 2 gols no total. Atualmente há ${score.total}.`;
-  if (lower.includes('over 2.5')) return `Precisa sair pelo menos 3 gols no total. Atualmente há ${score.total}.`;
-  if (lower.includes('over 8.5 escanteios')) return `A partida precisa ter pelo menos 9 escanteios. Atualmente há ${sumStat(signal.corners)}.`;
-  if (lower.includes('over 9.5 escanteios')) return `A partida precisa ter pelo menos 10 escanteios. Atualmente há ${sumStat(signal.corners)}.`;
-  if (lower.includes('over 10.5 escanteios')) return `A partida precisa ter pelo menos 11 escanteios. Atualmente há ${sumStat(signal.corners)}.`;
-  if (lower.includes('mais de 1.5 gols')) return `O time indicado precisa marcar 2 ou mais gols.`;
+  if (lower.includes('dupla chance')) return `${signal.bet} cobre dois resultados possíveis.`;
+  if (lower.includes('ambas marcam')) return 'Os dois times precisam marcar pelo menos 1 gol cada.';
+  if (lower.includes('over 0.5')) return 'Precisa sair pelo menos 1 gol no total.';
+  if (lower.includes('over 1.5')) return `Precisa haver pelo menos 2 gols no total. Atualmente há ${score.total}.`;
+  if (lower.includes('over 2.5')) return `Precisa haver pelo menos 3 gols no total. Atualmente há ${score.total}.`;
   return signal.condition;
-}
-
-function sumStat(stat){
-  return (stat || '0-0').split('-').reduce((sum, part) => sum + (parseInt(part.trim(),10) || 0), 0);
 }
 
 function badgeLabel(score){
   if(score >= 90) return 'Elite';
   if(score >= 80) return 'Forte';
   if(score >= 70) return 'Moderado';
-  return 'Atenção';
+  return 'Preliminar';
 }
 
-function signalCard(signal, compact = false){
+function signalCard(signal, compact = false, isDemo = false){
   return `
     <article class="signal-card">
       <div class="signal-top">
-        <span class="status-badge">⚡ SINAL DETECTADO</span>
+        <span class="status-badge">⚡ ${isDemo ? 'EXEMPLO DEMO' : 'SINAL GRIEL'}</span>
         <span class="small-live">${signal.minute}' • ${signal.score}</span>
       </div>
       <div class="signal-title">
@@ -237,20 +343,20 @@ function signalCard(signal, compact = false){
       <div class="match-state">
         <div><span>Condição para vencer</span><b>${signal.condition}</b></div>
         <div><span>Minuto</span><b>${signal.minute}'</b></div>
-        <div><span>Pressão</span><b>${signal.pressure}</b></div>
+        <div><span>Leitura</span><b>${isDemo ? 'Exemplo' : 'Preliminar'}</b></div>
       </div>
       <div class="metrics-grid">
-        <div class="metric"><span>Odd atual</span><b>${signal.odd.toFixed(2)}</b><small>Retorno decimal</small></div>
-        <div class="metric"><span>Pontuação GRIEL</span><b>${signal.rating}/100</b><small>${badgeLabel(signal.rating)} • não é garantia</small></div>
+        <div class="metric"><span>Odd atual</span><b>${formatOdd(signal.odd)}</b><small>${signal.odd ? 'Cotação disponível' : 'Abra mercados do jogo'}</small></div>
+        <div class="metric"><span>Pontuação GRIEL</span><b>${signal.rating}/100</b><small>${badgeLabel(signal.rating)} • não é probabilidade</small></div>
         <div class="metric"><span>Placar</span><b>${signal.score}</b><small>${signal.home} × ${signal.away}</small></div>
-        <div class="metric"><span>Finalizações</span><b>${signal.shots}</b><small>Total do jogo</small></div>
-        <div class="metric"><span>No alvo</span><b>${signal.onTarget}</b><small>Total do jogo</small></div>
-        <div class="metric"><span>Escanteios</span><b>${signal.corners}</b><small>Total do jogo</small></div>
+        <div class="metric"><span>Finalizações</span><b>${signal.shots}</b><small>Consultar detalhes</small></div>
+        <div class="metric"><span>No alvo</span><b>${signal.onTarget}</b><small>Consultar detalhes</small></div>
+        <div class="metric"><span>Escanteios</span><b>${signal.corners}</b><small>Consultar detalhes</small></div>
       </div>
       ${compact ? '' : `
       <div class="why-list">
         <strong>Por que esse sinal apareceu?</strong>
-        ${signal.why.map(item => `<p>✓ ${item}</p>`).join('')}
+        ${(signal.why || []).map(item => `<p>✓ ${item}</p>`).join('')}
       </div>
       <div class="risk-box">
         <strong>O que pode dar errado</strong>
@@ -258,10 +364,9 @@ function signalCard(signal, compact = false){
       </div>
       <div class="decision-box">
         <strong>Leitura simples para o cliente</strong>
-        <p>Se você seguir este mercado, a entrada indicada é <b>${signal.bet}</b>. Leia a condição e a odd antes de decidir.</p>
+        <p>A entrada analisada é <b>${signal.bet}</b>. Confira a odd ao vivo e a condição antes de decidir. Nenhum sinal garante resultado.</p>
       </div>`}
-    </article>
-  `;
+    </article>`;
 }
 
 function miniSignalCard(signal){
@@ -271,11 +376,10 @@ function miniSignalCard(signal){
       <small>${signal.marketType} • ${signal.bet}</small>
       <div class="market-chips">
         <div>${signal.minute}'</div>
-        <div>Odd ${signal.odd.toFixed(2)}</div>
+        <div>Odd ${formatOdd(signal.odd)}</div>
         <div>${signal.rating}/100</div>
       </div>
-    </div>
-  `;
+    </div>`;
 }
 
 function liveMatchCard(match){
@@ -289,18 +393,9 @@ function liveMatchCard(match){
         <span class="status-badge">🔴 AO VIVO</span>
       </div>
       <div class="live-score">
-        <div>
-          <span class="eyebrow">MINUTO</span>
-          <b>${match.minute}'</b>
-        </div>
-        <div>
-          <span class="eyebrow">PLACAR</span>
-          <b>${match.score}</b>
-        </div>
-        <div>
-          <span class="eyebrow">STATUS</span>
-          <b>${match.status}</b>
-        </div>
+        <div><span class="eyebrow">MINUTO</span><b>${match.minute || 0}'</b></div>
+        <div><span class="eyebrow">PLACAR</span><b>${match.score}</b></div>
+        <div><span class="eyebrow">STATUS</span><b>${match.status}</b></div>
       </div>
       <div class="live-stats">
         <div><span>Finalizações</span><b>${match.shots}</b></div>
@@ -311,46 +406,29 @@ function liveMatchCard(match){
         <div><span>Pressão</span><b>${match.pressure}</b></div>
       </div>
       <div class="live-actions">
-        <button class="primary open-markets" data-id="${match.id}">Ver mercados do jogo</button>
-        <button class="secondary open-top-signal" data-id="${match.id}">Ver melhor oportunidade</button>
+        <button class="primary open-markets" data-id="${match.id}">Ver odds e mercados</button>
+        <button class="secondary open-top-signal" data-id="${match.id}">Ver sinal GRIEL</button>
       </div>
-    </article>
-  `;
+    </article>`;
 }
 
 function catalogCard(item){
-  return `
-    <article class="catalog-card">
-      <span class="eyebrow">MERCADO</span>
-      <h4>${item.name}</h4>
-      <p>${item.desc}</p>
-      <ul>${item.items.map(x=>`<li>${x}</li>`).join('')}</ul>
-    </article>
-  `;
+  return `<article class="catalog-card"><span class="eyebrow">MERCADO</span><h4>${item.name}</h4><p>${item.desc}</p><ul>${item.items.map(x=>`<li>${x}</li>`).join('')}</ul></article>`;
 }
 
 function academyCard(item){
-  return `
-    <article class="academy-card">
-      <span class="eyebrow">GUIA RÁPIDO</span>
-      <h4>${item.title}</h4>
-      <p>${item.text}</p>
-      <div class="phrase-list" style="margin-top:12px">
-        <div>${item.example}</div>
-      </div>
-    </article>
-  `;
+  return `<article class="academy-card"><span class="eyebrow">GUIA RÁPIDO</span><h4>${item.title}</h4><p>${item.text}</p><div class="phrase-list" style="margin-top:12px"><div>${item.example}</div></div></article>`;
 }
 
 function setHeader(page){
   const titles = {
-    dashboard: ['Painel Premium', 'Tudo explicado de forma simples para você vender a experiência GRIEL.'],
-    signals: ['Sinais completos', 'Aqui o cliente enxerga claramente o que apostar e por quê.'],
-    live: ['Jogos ao vivo', 'Partidas monitoradas com acesso rápido aos mercados do jogo.'],
+    dashboard: ['Painel Premium', 'Sinais explicados em linguagem simples, com conexão segura a dados esportivos.'],
+    signals: ['Sinais completos', 'O cliente enxerga o mercado analisado, a condição e o risco.'],
+    live: ['Jogos ao vivo', 'Partidas reais recebidas pelo backend seguro da GRIEL.'],
     markets: ['Mercados', 'Catálogo dos tipos de apostas que a plataforma pode exibir.'],
     academy: ['Academy', 'Explicações fáceis para quem está começando agora.'],
     history: ['Histórico', 'Mostre desempenho com transparência e organização.'],
-    settings: ['Configurações', 'Ajustes do motor, filtros e integração com dados reais.']
+    settings: ['Configurações', 'Ajustes do motor e status da integração GRIEL Live.']
   };
   $('#pageTitle').textContent = titles[page][0];
   $('#pageSubtitle').textContent = titles[page][1];
@@ -365,14 +443,26 @@ function goToPage(page){
 }
 
 function renderDashboard(){
-  $('#featuredSignal').innerHTML = signalCard(appState.signals[0]);
-  $('#miniSignals').innerHTML = appState.signals.slice(1,4).map(miniSignalCard).join('');
-  const uniqueMarkets = [...new Set(appState.signals.map(s=>s.marketType))];
+  const hasLiveSignal = appState.connected && appState.signals.length > 0;
+  const exampleSignals = buildSignalsFromMatches(structuredClone(demoMatches));
+  if (hasLiveSignal) {
+    $('#featuredSignal').innerHTML = signalCard(appState.signals[0]);
+    $('#miniSignals').innerHTML = appState.signals.slice(1,4).map(miniSignalCard).join('') || '<div class="empty-state">Nenhum outro sinal ao vivo agora.</div>';
+  } else if (appState.connected) {
+    $('#featuredSignal').innerHTML = '<div class="empty-state"><b>GRIEL Live conectado.</b><br>Nenhum sinal preliminar disponível neste momento. Isso pode acontecer mesmo com jogos ao vivo.</div>';
+    $('#miniSignals').innerHTML = '<div class="empty-state">Aguardando novas condições de sinal.</div>';
+  } else {
+    $('#featuredSignal').innerHTML = signalCard(exampleSignals[0], false, true);
+    $('#miniSignals').innerHTML = exampleSignals.slice(1,4).map(miniSignalCard).join('');
+  }
+
+  const currentSignals = hasLiveSignal ? appState.signals : [];
+  const uniqueMarkets = [...new Set((currentSignals.length ? currentSignals : exampleSignals).map(s=>s.marketType))];
   $('#marketChips').innerHTML = uniqueMarkets.map(m=>`<div class="chip">${m}</div>`).join('');
-  $('#statSignals').textContent = appState.signals.length;
-  $('#statMatches').textContent = appState.matches.length;
-  $('#statMarkets').textContent = uniqueMarkets.length;
-  $('#statAlerts').textContent = appState.signals.filter(s=>s.rating >= 80).length;
+  $('#statSignals').textContent = currentSignals.length;
+  $('#statMatches').textContent = appState.connected ? appState.matches.length : 0;
+  $('#statMarkets').textContent = [...new Set(currentSignals.map(s=>s.marketType))].length;
+  $('#statAlerts').textContent = currentSignals.filter(s=>s.rating >= 80).length;
 }
 
 function populateFilters(){
@@ -394,7 +484,7 @@ function renderSignals(){
   });
   $('#signalList').innerHTML = filtered.length
     ? filtered.map(signal => signalCard(signal)).join('')
-    : '<div class="empty-state">Nenhum sinal encontrado com esses filtros.</div>';
+    : `<div class="empty-state">${appState.connected ? 'Nenhum sinal ao vivo atende aos filtros neste momento.' : 'Backend ao vivo indisponível. O painel principal mantém apenas um exemplo demonstrativo.'}</div>`;
 }
 
 function renderLiveMatches(){
@@ -406,67 +496,106 @@ function renderLiveMatches(){
   });
   $('#liveMatches').innerHTML = filtered.length
     ? filtered.map(liveMatchCard).join('')
-    : '<div class="empty-state">Nenhuma partida encontrada com esses filtros.</div>';
-
+    : `<div class="empty-state">${appState.connected ? 'GRIEL Live conectado, mas não há partidas ao vivo retornadas pela API agora.' : 'Não foi possível carregar partidas reais.'}</div>`;
   $$('.open-markets').forEach(btn => btn.addEventListener('click', () => openMarketModal(parseInt(btn.dataset.id,10))));
   $$('.open-top-signal').forEach(btn => btn.addEventListener('click', () => openTopOpportunity(parseInt(btn.dataset.id,10))));
 }
 
-function renderMarketsPage(){
-  $('#marketCatalog').innerHTML = marketCatalog.map(catalogCard).join('');
-}
-
-function renderAcademy(){
-  $('#academyCards').innerHTML = academyContent.map(academyCard).join('');
-  $('#phraseList').innerHTML = phraseLibrary.map(line => `<div>${line}</div>`).join('');
-  calculateReturn();
-}
-
+function renderMarketsPage(){ $('#marketCatalog').innerHTML = marketCatalog.map(catalogCard).join(''); }
+function renderAcademy(){ $('#academyCards').innerHTML = academyContent.map(academyCard).join(''); $('#phraseList').innerHTML = phraseLibrary.map(line => `<div>${line}</div>`).join(''); calculateReturn(); }
 function renderHistory(){
-  $('#historyRows').innerHTML = historyRowsData.map(row => `
-    <tr>
-      <td>${row[0]}</td>
-      <td>${row[1]}</td>
-      <td>${row[2]}</td>
-      <td>${row[3]}</td>
-      <td>${row[4]}</td>
-      <td class="${row[5] === 'GREEN' ? 'tag-green' : 'tag-red'}">${row[5]}</td>
-    </tr>
-  `).join('');
+  $('#historyRows').innerHTML = historyRowsData.map(row => `<tr><td>${row[0]}</td><td>${row[1]}</td><td>${row[2]}</td><td>${row[3]}</td><td>${row[4]}</td><td class="${row[5] === 'GREEN' ? 'tag-green' : 'tag-red'}">${row[5]}</td></tr>`).join('');
 }
 
-function openMarketModal(matchId){
+function statValue(stats, type){
+  const item = (stats || []).find(s => String(s.type || '').toLowerCase() === type.toLowerCase());
+  return item ? item.value : null;
+}
+
+function parseStatsResponse(response){
+  if (!Array.isArray(response) || !response.length) return null;
+  const sides = response.map(team => ({ team: team.team?.name || 'Time', stats: team.statistics || [] }));
+  return {
+    sides,
+    rows: [
+      ['Finalizações', 'Total Shots'],
+      ['No alvo', 'Shots on Goal'],
+      ['Escanteios', 'Corner Kicks'],
+      ['Posse', 'Ball Possession'],
+      ['Amarelos', 'Yellow Cards'],
+      ['Vermelhos', 'Red Cards']
+    ].map(([label,type]) => ({ label, values: sides.map(s => statValue(s.stats, type) ?? '—') }))
+  };
+}
+
+function flattenOdds(response){
+  const out = [];
+  const fixtures = Array.isArray(response) ? response : [];
+  for (const item of fixtures) {
+    const bookmakers = item.bookmakers || [];
+    for (const bookmaker of bookmakers) {
+      for (const bet of (bookmaker.bets || [])) {
+        for (const value of (bet.values || [])) {
+          const odd = value.odd ?? value.price ?? value.value_odd;
+          out.push({
+            bookmaker: bookmaker.name || 'Bookmaker',
+            market: bet.name || `Mercado ${bet.id ?? ''}`,
+            choice: value.value || value.name || value.label || 'Opção',
+            odd: odd,
+            handicap: value.handicap ?? null,
+            main: value.main ?? null,
+            suspended: Boolean(value.suspended)
+          });
+        }
+      }
+    }
+  }
+  return out.filter(x => !x.suspended).slice(0, 36);
+}
+
+async function openMarketModal(matchId){
   const match = appState.matches.find(item => item.id === matchId);
   if(!match) return;
   $('#modalTitle').textContent = `${match.home} × ${match.away}`;
-  $('#modalBody').innerHTML = match.markets.map(market => `
-    <article class="market-row">
-      <h4>${market.bet}</h4>
-      <p>${market.condition}</p>
-      <div class="row-grid">
-        <div><span>Tipo</span><b>${market.type}</b></div>
-        <div><span>Odd</span><b>${market.odd.toFixed(2)}</b></div>
-        <div><span>Pontuação GRIEL</span><b>${market.score}/100</b></div>
-      </div>
-      <div class="phrase-list" style="margin-top:12px">
-        <div><b>O que apostar:</b> ${market.bet}</div>
-        <div><b>Por que apareceu:</b> ${market.why.join(' • ')}</div>
-        <div><b>Risco:</b> ${market.risk}</div>
-      </div>
-    </article>
-  `).join('');
+  $('#modalBody').innerHTML = '<div class="empty-state">Carregando odds e estatísticas reais deste jogo...</div>';
   $('#marketModal').showModal();
+
+  try {
+    const [oddsResp, statsResp] = await Promise.all([
+      fetch(`${LIVE_ENDPOINT}?action=odds&fixture=${matchId}`),
+      fetch(`${LIVE_ENDPOINT}?action=stats&fixture=${matchId}`)
+    ]);
+    const [oddsData, statsData] = await Promise.all([oddsResp.json(), statsResp.json()]);
+    if (!oddsResp.ok && !statsResp.ok) throw new Error(oddsData.detail || statsData.detail || 'Falha nas consultas.');
+
+    const odds = oddsData.ok ? flattenOdds(oddsData.response) : [];
+    const stats = statsData.ok ? parseStatsResponse(statsData.response) : null;
+
+    const statsHtml = stats ? `
+      <article class="market-row">
+        <h4>Estatísticas ao vivo</h4>
+        <div class="row-grid"><div><span>Time</span><b>${stats.sides[0]?.team || 'Casa'}</b></div><div><span>Placar</span><b>${match.score}</b></div><div><span>Time</span><b>${stats.sides[1]?.team || 'Fora'}</b></div></div>
+        <div class="phrase-list" style="margin-top:12px">${stats.rows.map(r=>`<div><b>${r.label}:</b> ${r.values[0]} × ${r.values[1]}</div>`).join('')}</div>
+      </article>` : '<div class="integration-note">Estatísticas detalhadas indisponíveis para esta partida.</div>';
+
+    const oddsHtml = odds.length ? odds.map(o => `
+      <article class="market-row">
+        <h4>${o.market}</h4>
+        <p><b>Opção:</b> ${o.choice}${o.handicap !== null ? ` • Linha ${o.handicap}` : ''}</p>
+        <div class="row-grid"><div><span>Bookmaker</span><b>${o.bookmaker}</b></div><div><span>Odd ao vivo</span><b>${formatOdd(o.odd)}</b></div><div><span>Status</span><b>Disponível</b></div></div>
+      </article>`).join('') : '<div class="integration-note">A API não retornou odds live para esta partida neste momento. Isso varia por competição e bookmaker.</div>';
+
+    $('#modalBody').innerHTML = statsHtml + oddsHtml;
+  } catch (error) {
+    $('#modalBody').innerHTML = `<div class="empty-state">Não foi possível carregar os detalhes agora.<br>${error.message}</div>`;
+  }
 }
 
 function openTopOpportunity(matchId){
   const related = appState.signals.filter(s => s.matchId === matchId).sort((a,b)=>b.rating-a.rating);
-  if(!related.length) return;
+  if(!related.length) { toast('Este jogo ainda não atingiu uma regra preliminar da GRIEL.'); return; }
   goToPage('signals');
-  setTimeout(() => {
-    const firstCard = $('#signalList .signal-card');
-    if(firstCard) firstCard.scrollIntoView({behavior:'smooth', block:'start'});
-  }, 120);
-  toast(`Melhor oportunidade: ${related[0].bet}`);
+  toast(`Sinal atual: ${related[0].bet}`);
 }
 
 function calculateReturn(){
@@ -482,9 +611,6 @@ function loadSettings(){
   $('#minOdd').value = saved.minOdd || 1.45;
   $('#maxOdd').value = saved.maxOdd || 2.80;
   $('#onlyLive').checked = saved.onlyLive !== undefined ? saved.onlyLive : true;
-  $('#apiUrl').value = saved.apiUrl || (window.GRIEL_CONFIG && window.GRIEL_CONFIG.apiBaseUrl) || '';
-  $('#apiKey').value = saved.apiKey || '';
-  $('#liveModeToggle').checked = saved.liveMode === 'live';
 }
 
 function saveSettings(){
@@ -492,62 +618,67 @@ function saveSettings(){
     minScore: parseInt($('#minScore').value,10),
     minOdd: parseFloat($('#minOdd').value),
     maxOdd: parseFloat($('#maxOdd').value),
-    onlyLive: $('#onlyLive').checked,
-    apiUrl: $('#apiUrl').value.trim(),
-    apiKey: $('#apiKey').value.trim(),
-    liveMode: $('#liveModeToggle').checked ? 'live' : 'demo'
+    onlyLive: $('#onlyLive').checked
   };
   localStorage.setItem('grielSettings', JSON.stringify(settings));
   toast('Configurações salvas neste navegador.');
 }
 
-async function tryLiveMode(){
-  const saved = JSON.parse(localStorage.getItem('grielSettings') || '{}');
-  const wantsLive = saved.liveMode === 'live';
-  appState.mode = wantsLive ? 'live' : 'demo';
-  updateModeUi();
+async function testBackend(){
+  const response = await fetch(`${LIVE_ENDPOINT}?action=health`, { cache: 'no-store' });
+  const data = await response.json();
+  if (!response.ok || !data.ok) throw new Error(data.error || 'Backend indisponível.');
+  return data;
+}
 
-  if(!wantsLive || !saved.apiUrl) {
-    appState.matches = structuredClone(demoMatches);
-    appState.signals = buildSignalsFromMatches(appState.matches);
-    renderAll();
-    return;
-  }
+async function loadLiveData({showToast = false} = {}){
+  appState.mode = 'loading';
+  updateModeUi();
+  if (showToast) toast('Consultando GRIEL Live...');
 
   try {
-    const url = saved.apiUrl.replace(/\/$/, '');
-    const headers = saved.apiKey ? { 'Authorization': `Bearer ${saved.apiKey}` } : {};
+    const health = await testBackend();
+    if (!health.configured) throw new Error('A variável API_FOOTBALL_KEY ainda não está disponível para a Function.');
 
-    const [matchesResp, signalsResp] = await Promise.all([
-      fetch(`${url}/matches`, { headers }),
-      fetch(`${url}/signals`, { headers })
-    ]);
+    const response = await fetch(`${LIVE_ENDPOINT}?action=live`);
+    const data = await response.json();
+    if (!response.ok || !data.ok) throw new Error(data.detail || data.error || 'Falha ao consultar jogos ao vivo.');
 
-    if(!matchesResp.ok || !signalsResp.ok) throw new Error('Falha na resposta da API');
-    const liveMatches = await matchesResp.json();
-    const liveSignals = await signalsResp.json();
-
-    if(!Array.isArray(liveMatches) || !Array.isArray(liveSignals)) throw new Error('Formato inválido');
-
-    appState.matches = liveMatches;
-    appState.signals = liveSignals;
-    renderAll();
-    $('#apiStatus').textContent = 'Conectado com sucesso usando dados reais.';
-  } catch (error) {
-    appState.mode = 'demo';
-    updateModeUi();
-    appState.matches = structuredClone(demoMatches);
+    appState.connected = true;
+    appState.mode = 'live';
+    appState.liveError = '';
+    appState.lastUpdated = data.updatedAt || new Date().toISOString();
+    appState.matches = (data.response || []).map(fixtureToMatch).filter(m => m.id);
     appState.signals = buildSignalsFromMatches(appState.matches);
-    renderAll();
-    $('#apiStatus').textContent = `Falha ao carregar dados reais. Mantido em demonstração. Motivo: ${error.message}`;
+    $('#apiStatus').innerHTML = `<b>GRIEL Live conectado.</b><br>${appState.matches.length} jogo(s) ao vivo retornado(s). Cache econômico do plano grátis: até 30 minutos para a lista geral.`;
+  } catch (error) {
+    appState.connected = false;
+    appState.mode = 'demo';
+    appState.liveError = error.message;
+    appState.matches = [];
+    appState.signals = [];
+    $('#apiStatus').innerHTML = `<b>GRIEL Live ainda não conectado.</b><br>${error.message}`;
   }
+
+  updateModeUi();
+  renderAll();
 }
 
 function updateModeUi(){
-  const demo = appState.mode !== 'live';
-  $('#modePill').textContent = demo ? 'DEMO' : 'LIVE';
-  $('#engineModeLabel').textContent = demo ? 'Modo demonstração' : 'Tentando dados reais';
-  $('#engineLabel').textContent = demo ? 'Motor GRIEL ativo' : 'Motor GRIEL ao vivo';
+  const pill = $('#modePill');
+  if (appState.mode === 'live') {
+    pill.textContent = 'LIVE';
+    $('#engineModeLabel').textContent = 'Dados reais conectados';
+    $('#engineLabel').textContent = 'Motor GRIEL Live';
+  } else if (appState.mode === 'loading') {
+    pill.textContent = 'CONECTANDO';
+    $('#engineModeLabel').textContent = 'Verificando API';
+    $('#engineLabel').textContent = 'Motor GRIEL';
+  } else {
+    pill.textContent = 'DEMO';
+    $('#engineModeLabel').textContent = 'Exemplo visual';
+    $('#engineLabel').textContent = 'Motor GRIEL';
+  }
 }
 
 function exportCsv(){
@@ -567,7 +698,7 @@ function toast(message){
   el.textContent = message;
   el.classList.add('show');
   clearTimeout(toast.timer);
-  toast.timer = setTimeout(() => el.classList.remove('show'), 2600);
+  toast.timer = setTimeout(() => el.classList.remove('show'), 2800);
 }
 
 function renderAll(){
@@ -594,15 +725,11 @@ function bindEvents(){
   $('#saveSettings').addEventListener('click', saveSettings);
   $('#exportCsv').addEventListener('click', exportCsv);
   $('#testApiBtn').addEventListener('click', async () => {
-    $('#apiStatus').textContent = 'Testando integração...';
-    saveSettings();
-    await tryLiveMode();
+    $('#apiStatus').textContent = 'Testando GRIEL Live...';
+    await loadLiveData({showToast:true});
   });
-  $('#refreshData').addEventListener('click', async () => {
-    toast('Atualizando dados...');
-    await tryLiveMode();
-  });
-  $('#showAlertDemo').addEventListener('click', () => toast('Notificações demonstrativas ativas.'));
+  $('#refreshData').addEventListener('click', () => loadLiveData({showToast:true}));
+  $('#showAlertDemo').addEventListener('click', () => toast(appState.connected ? 'Alertas GRIEL prontos para futura integração push/Telegram.' : 'Alertas em modo demonstração.'));
   $('#closeModal').addEventListener('click', () => $('#marketModal').close());
   $('#marketModal').addEventListener('click', (e) => {
     const rect = e.currentTarget.getBoundingClientRect();
@@ -614,10 +741,10 @@ function bindEvents(){
 async function init(){
   loadSettings();
   bindEvents();
-  appState.signals = buildSignalsFromMatches(appState.matches);
+  appState.mode = 'loading';
   updateModeUi();
   renderAll();
-  await tryLiveMode();
+  await loadLiveData();
 }
 
 init();

@@ -89,9 +89,8 @@
         <div class="warning-box">
           <strong>Importante:</strong>
           <span>
-            Nesta versão o sistema pode operar em <b>demonstração</b> ou ser preparado para <b>dados reais</b>.
-            Sem API conectada, os dados exibidos são exemplos visuais. O layout e a experiência já estão prontos para comercialização,
-            mas o tempo real depende da integração com um provedor esportivo/odds.
+            O GRIEL agora tenta usar <b>dados reais</b> pelo backend seguro. Se não houver jogos ao vivo, a tela informa isso sem fingir partidas.
+            No plano gratuito, o cache é propositalmente conservador para não consumir sua cota rapidamente. Para atualização em segundos, será necessário um plano com mais requisições.
           </span>
         </div>
 
@@ -298,21 +297,18 @@
           <article class="panel">
             <div class="panel-head">
               <div>
-                <span class="eyebrow">INTEGRAÇÃO LIVE</span>
-                <h3>Modo real</h3>
+                <span class="eyebrow">GRIEL LIVE</span>
+                <h3>Conexão com dados reais</h3>
               </div>
             </div>
-            <label class="form-line">
-              API Base URL
-              <input type="text" id="apiUrl" placeholder="https://seudominio.com/api">
-            </label>
-            <label class="form-line">
-              API Key
-              <input type="password" id="apiKey" placeholder="Sua chave de integração">
-            </label>
-            <label class="checkbox-line"><input type="checkbox" id="liveModeToggle"> Tentar usar dados reais ao carregar</label>
-            <button class="secondary" id="testApiBtn">Testar conexão</button>
-            <div class="integration-note" id="apiStatus">Nenhum teste executado ainda.</div>
+            <div class="integration-note" id="apiStatus">Verificando backend seguro da GRIEL...</div>
+            <div class="checklist" style="margin-top:12px">
+              <p>✓ A chave da API fica somente no servidor da Netlify.</p>
+              <p>✓ O navegador nunca recebe sua API Key.</p>
+              <p>✓ Jogos ao vivo usam cache para economizar a cota do plano.</p>
+              <p>✓ Odds e estatísticas são consultadas sob demanda.</p>
+            </div>
+            <button class="secondary" id="testApiBtn" style="margin-top:14px">Testar GRIEL Live</button>
           </article>
 
           <article class="panel full-span">

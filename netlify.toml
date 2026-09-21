@@ -1,0 +1,8 @@
+[functions]
+  directory = "netlify/functions"
+
+[[redirects]]
+  from = "/api/griel"
+  to = "/.netlify/functions/griel-live"
+  status = 200
+  force = true

@@ -1,108 +1,42 @@
-# GRIEL Signals — Versão Premium v3
+# GRIEL Signals v4 Live
 
-Protótipo avançado da plataforma GRIEL Signals, com foco em apresentação comercial e experiência intuitiva para usuários iniciantes.
+Versão com frontend premium + backend seguro em Netlify Functions para consultar a API-FOOTBALL sem expor a API Key no navegador ou no GitHub.
 
-## O que esta versão entrega
-
-- Interface premium com identidade visual GRIEL
-- Painel principal com sinal em destaque
-- Tela de sinais com filtros
-- Tela de jogos ao vivo
-- Modal de mercados por jogo
-- Catálogo de mercados
-- Academy para iniciantes
-- Histórico e exportação CSV
-- Configurações salvas no navegador
-- Preparação para usar dados reais por API
-
-## Arquivos
+## Arquivos principais
 
 - `index.html`
 - `style.css`
 - `app.js`
 - `config.js`
-- `README.md`
+- `netlify.toml`
+- `netlify/functions/griel-live.js`
 
-## Como usar
+## Variável de ambiente
 
-1. Abra `index.html` no navegador.
-2. O sistema inicia em modo demonstração.
-3. Para tentar dados reais, vá em **Configurações** e preencha:
-   - API Base URL
-   - API Key (se necessário)
-   - marque **Tentar usar dados reais ao carregar**
-4. O frontend tentará buscar:
-   - `GET /matches`
-   - `GET /signals`
+Na Netlify, crie a variável secreta:
 
-## Estrutura esperada para integração real
+`API_FOOTBALL_KEY`
 
-### `/matches`
-Retornar um array com campos no formato:
+A Function lê a chave com `process.env.API_FOOTBALL_KEY`.
 
-```json
-[
-  {
-    "id": 1,
-    "home": "Barcelona",
-    "away": "Roma",
-    "league": "Champions Cup • Internacional",
-    "minute": 67,
-    "score": "2-1",
-    "status": "2º tempo",
-    "shots": "18-9",
-    "onTarget": "9-4",
-    "corners": "7-3",
-    "cards": "1-2",
-    "possession": "61%-39%",
-    "pressure": "Alta",
-    "markets": []
-  }
-]
-```
+## Endpoints internos do GRIEL
 
-### `/signals`
-Retornar um array já pronto para renderização no formato:
+- `/api/griel?action=health`
+- `/api/griel?action=live`
+- `/api/griel?action=odds&fixture=ID`
+- `/api/griel?action=stats&fixture=ID`
+- `/api/griel?action=prediction&fixture=ID`
 
-```json
-[
-  {
-    "id": "1-0",
-    "matchId": 1,
-    "home": "Barcelona",
-    "away": "Roma",
-    "league": "Champions Cup • Internacional",
-    "minute": 67,
-    "score": "2-1",
-    "status": "2º tempo",
-    "shots": "18-9",
-    "onTarget": "9-4",
-    "corners": "7-3",
-    "cards": "1-2",
-    "pressure": "Alta",
-    "marketType": "Resultado do jogo",
-    "bet": "Barcelona vence",
-    "odd": 1.62,
-    "rating": 91,
-    "condition": "O Barcelona precisa vencer no tempo normal.",
-    "why": ["Barcelona lidera o placar"],
-    "risk": "A Roma ainda pode empatar ou virar."
-  }
-]
-```
+## Economia de quota
 
-## Observação importante
+O plano grátis da API-FOOTBALL possui cota limitada. Por isso:
 
-Esta versão é um frontend avançado. Para produção comercial real, ainda é recomendado criar:
+- a lista geral de jogos ao vivo é armazenada no cache CDN da Netlify por até 30 minutos;
+- odds e estatísticas são buscadas sob demanda e armazenadas por até 10 minutos;
+- a chave nunca é enviada ao navegador.
 
-- backend seguro
-- autenticação e painel administrativo
-- banco de dados
-- controle de usuários e assinaturas
-- integrações com provedores de dados/odds
-- notificações push, email ou Telegram
-- termos de uso, privacidade e jogo responsável
+Para atualização realmente próxima dos 15 segundos oferecidos pela API, será necessário usar uma cota de requisições maior e reduzir os tempos de cache.
 
-## Marca
+## Importante
 
-A interface usa a identidade GRIEL Signals. Isso ajuda na apresentação comercial, mas proteção formal da marca depende de registro e validação jurídica adequados.
+A pontuação GRIEL exibida pelo frontend é uma pontuação heurística interna e não representa probabilidade garantida de acerto. Nenhum sinal garante resultado ou lucro.

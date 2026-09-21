@@ -1,6 +1,5 @@
 window.GRIEL_CONFIG = {
   brand: 'GRIEL Signals',
-  mode: 'demo',
-  apiBaseUrl: '',
-  apiKey: ''
+  version: '4.0 Live',
+  liveEndpoint: '/api/griel'
 };
