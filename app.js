@@ -155,8 +155,40 @@ const appState = {
   mode: 'loading',
   connected: false,
   lastUpdated: null,
-  liveError: ''
+  liveError: '',
+  quota: null,
+  refreshTimer: null
 };
+
+const LIVE_REFRESH_MS = 15000;
+
+function translateStatus(value){
+  const map = {
+    'First Half': '1º tempo',
+    'Second Half': '2º tempo',
+    'Halftime': 'Intervalo',
+    'Extra Time': 'Prorrogação',
+    'Penalty In Progress': 'Pênaltis',
+    'Break Time': 'Pausa',
+    'Match Finished': 'Encerrado'
+  };
+  return map[value] || value || 'Ao vivo';
+}
+
+function ageSeconds(iso){
+  if (!iso) return null;
+  const ms = Date.now() - new Date(iso).getTime();
+  return Number.isFinite(ms) ? Math.max(0, Math.round(ms / 1000)) : null;
+}
+
+function freshnessText(){
+  const age = ageSeconds(appState.lastUpdated);
+  if (age === null) return 'Sincronizando';
+  if (age < 5) return 'Atualizado agora';
+  if (age < 60) return `Atualizado há ${age}s`;
+  return `Atualizado há ${Math.floor(age/60)}min`;
+}
+
 
 function safeNumber(value, fallback = 0){
   const n = Number(value);
@@ -186,7 +218,7 @@ function fixtureToMatch(item){
     league: [league.country, league.name].filter(Boolean).join(' • ') || 'Competição',
     minute,
     score: `${homeGoals}-${awayGoals}`,
-    status: status.long || status.short || 'Ao vivo',
+    status: translateStatus(status.long || status.short || 'Ao vivo'),
     statusShort: status.short || '',
     shots: 'sob demanda',
     onTarget: 'sob demanda',
@@ -405,6 +437,7 @@ function liveMatchCard(match){
         <div><span>Posse</span><b>${match.possession}</b></div>
         <div><span>Pressão</span><b>${match.pressure}</b></div>
       </div>
+      <div class="decision-box"><strong>Sincronização</strong><p>${freshnessText()} • atualização automática a cada 15s enquanto a aba estiver aberta.</p></div>
       <div class="live-actions">
         <button class="primary open-markets" data-id="${match.id}">Ver odds e mercados</button>
         <button class="secondary open-top-signal" data-id="${match.id}">Ver sinal GRIEL</button>
@@ -562,8 +595,8 @@ async function openMarketModal(matchId){
 
   try {
     const [oddsResp, statsResp] = await Promise.all([
-      fetch(`${LIVE_ENDPOINT}?action=odds&fixture=${matchId}`),
-      fetch(`${LIVE_ENDPOINT}?action=stats&fixture=${matchId}`)
+      fetch(`${LIVE_ENDPOINT}?action=odds&fixture=${matchId}&v=${Math.floor(Date.now()/15000)}`, {cache:'no-store'}),
+      fetch(`${LIVE_ENDPOINT}?action=stats&fixture=${matchId}&v=${Math.floor(Date.now()/60000)}`, {cache:'no-store'})
     ]);
     const [oddsData, statsData] = await Promise.all([oddsResp.json(), statsResp.json()]);
     if (!oddsResp.ok && !statsResp.ok) throw new Error(oddsData.detail || statsData.detail || 'Falha nas consultas.');
@@ -631,16 +664,21 @@ async function testBackend(){
   return data;
 }
 
-async function loadLiveData({showToast = false} = {}){
-  appState.mode = 'loading';
-  updateModeUi();
+async function loadLiveData({showToast = false, background = false} = {}){
+  if (!background) {
+    appState.mode = 'loading';
+    updateModeUi();
+  }
   if (showToast) toast('Consultando GRIEL Live...');
 
   try {
-    const health = await testBackend();
-    if (!health.configured) throw new Error('A variável API_FOOTBALL_KEY ainda não está disponível para a Function.');
+    if (!background) {
+      const health = await testBackend();
+      if (!health.configured) throw new Error('A variável API_FOOTBALL_KEY ainda não está disponível para a Function.');
+    }
 
-    const response = await fetch(`${LIVE_ENDPOINT}?action=live`);
+    const bucket = Math.floor(Date.now() / LIVE_REFRESH_MS);
+    const response = await fetch(`${LIVE_ENDPOINT}?action=live&v=${bucket}`, { cache: 'no-store' });
     const data = await response.json();
     if (!response.ok || !data.ok) throw new Error(data.detail || data.error || 'Falha ao consultar jogos ao vivo.');
 
@@ -648,13 +686,18 @@ async function loadLiveData({showToast = false} = {}){
     appState.mode = 'live';
     appState.liveError = '';
     appState.lastUpdated = data.updatedAt || new Date().toISOString();
+    appState.quota = data.quota || null;
     appState.matches = (data.response || []).map(fixtureToMatch).filter(m => m.id);
     appState.signals = buildSignalsFromMatches(appState.matches);
-    $('#apiStatus').innerHTML = `<b>GRIEL Live conectado.</b><br>${appState.matches.length} jogo(s) ao vivo retornado(s). Cache econômico do plano grátis: até 30 minutos para a lista geral.`;
+    $('#apiStatus').innerHTML = `<b>GRIEL Live conectado.</b><br>${appState.matches.length} jogo(s) ao vivo • ${freshnessText()}${appState.quota?.dailyRemaining ? ` • ${appState.quota.dailyRemaining} requisições restantes hoje` : ''}.`;
   } catch (error) {
+    appState.liveError = error.message;
+    if (background && appState.connected) {
+      $('#apiStatus').innerHTML = `<b>GRIEL Live conectado com dados anteriores.</b><br>Última atualização válida: ${freshnessText()} • nova tentativa automática em 15s.`;
+      return;
+    }
     appState.connected = false;
     appState.mode = 'demo';
-    appState.liveError = error.message;
     appState.matches = [];
     appState.signals = [];
     $('#apiStatus').innerHTML = `<b>GRIEL Live ainda não conectado.</b><br>${error.message}`;
@@ -662,6 +705,14 @@ async function loadLiveData({showToast = false} = {}){
 
   updateModeUi();
   renderAll();
+}
+
+function scheduleLiveRefresh(){
+  clearInterval(appState.refreshTimer);
+  appState.refreshTimer = setInterval(() => {
+    if (document.visibilityState !== 'visible') return;
+    loadLiveData({background:true});
+  }, LIVE_REFRESH_MS);
 }
 
 function updateModeUi(){
@@ -745,6 +796,7 @@ async function init(){
   updateModeUi();
   renderAll();
   await loadLiveData();
+  scheduleLiveRefresh();
 }
 
 init();

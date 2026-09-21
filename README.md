@@ -1,42 +1,33 @@
-# GRIEL Signals v4 Live
+# GRIEL Signals v5 — Live Near-Real-Time
 
-Versão com frontend premium + backend seguro em Netlify Functions para consultar a API-FOOTBALL sem expor a API Key no navegador ou no GitHub.
+Versão otimizada do GRIEL Signals para reduzir atraso em partidas ao vivo.
 
-## Arquivos principais
+## Principais mudanças
 
-- `index.html`
-- `style.css`
-- `app.js`
-- `config.js`
-- `netlify.toml`
-- `netlify/functions/griel-live.js`
+- lista de jogos ao vivo: cache de 15 segundos
+- odds ao vivo: cache de 15 segundos
+- estatísticas: cache de 60 segundos
+- predictions: cache de 30 minutos
+- atualização automática do frontend a cada 15 segundos quando a aba está visível
+- mantém o último dado válido se houver uma falha temporária
+- exibe idade da sincronização e quota restante quando disponível
+- traduz alguns status comuns para português
+- API key permanece somente na variável `API_FOOTBALL_KEY` da Netlify
 
-## Variável de ambiente
+## Importante sobre produção
 
-Na Netlify, crie a variável secreta:
+O plano gratuito da API-FOOTBALL tem 100 requisições por dia. Ele serve para desenvolvimento, mas não para uma plataforma comercial que atualiza partidas a cada poucos segundos.
+
+A arquitetura desta versão usa cache compartilhado na Netlify para evitar uma chamada ao provedor por cliente, mas um produto comercial deve usar um plano com quota suficiente e monitorar os limites retornados pela API.
+
+## Deploy
+
+Substitua os arquivos atuais do repositório pelos desta pasta, preservando:
+
+`netlify/functions/griel-live.js`
+
+A variável secreta na Netlify continua com o nome:
 
 `API_FOOTBALL_KEY`
 
-A Function lê a chave com `process.env.API_FOOTBALL_KEY`.
-
-## Endpoints internos do GRIEL
-
-- `/api/griel?action=health`
-- `/api/griel?action=live`
-- `/api/griel?action=odds&fixture=ID`
-- `/api/griel?action=stats&fixture=ID`
-- `/api/griel?action=prediction&fixture=ID`
-
-## Economia de quota
-
-O plano grátis da API-FOOTBALL possui cota limitada. Por isso:
-
-- a lista geral de jogos ao vivo é armazenada no cache CDN da Netlify por até 30 minutos;
-- odds e estatísticas são buscadas sob demanda e armazenadas por até 10 minutos;
-- a chave nunca é enviada ao navegador.
-
-Para atualização realmente próxima dos 15 segundos oferecidos pela API, será necessário usar uma cota de requisições maior e reduzir os tempos de cache.
-
-## Importante
-
-A pontuação GRIEL exibida pelo frontend é uma pontuação heurística interna e não representa probabilidade garantida de acerto. Nenhum sinal garante resultado ou lucro.
+Não coloque a chave no código ou no GitHub.
