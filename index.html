@@ -71,11 +71,11 @@
             </div>
           </div>
           <div class="hero-side">
-            <div class="hero-mini-card">
-              <span class="eyebrow">EXEMPLO DE LEITURA</span>
-              <strong>O QUE APOSTAR</strong>
-              <b>Barcelona vence</b>
-              <p>Se o Barcelona ganhar no tempo normal, a aposta atende a condição.</p>
+            <div class="hero-mini-card" id="heroSignalSummary">
+              <span class="eyebrow" id="heroSignalEyebrow">MOTOR GRIEL</span>
+              <strong id="heroSignalLabel">ANÁLISE VALIDADA</strong>
+              <b id="heroSignalBet">Aguardando análise real</b>
+              <p id="heroSignalText">Em modo LIVE, o GRIEL só transforma uma partida em sinal após cruzar dados reais do jogo com um mercado disponível.</p>
             </div>
             <div class="hero-mini-grid">
               <div><span>Sinais hoje</span><b id="statSignals">0</b></div>
@@ -89,8 +89,8 @@
         <div class="warning-box">
           <strong>Importante:</strong>
           <span>
-            O GRIEL agora tenta usar <b>dados reais</b> pelo backend seguro. Se não houver jogos ao vivo, a tela informa isso sem fingir partidas.
-            No plano gratuito, o cache é propositalmente conservador para não consumir sua cota rapidamente. Para atualização em segundos, será necessário um plano com mais requisições.
+            O GRIEL usa <b>dados reais</b> pelo backend seguro. Em LIVE, o sistema não cria recomendação apenas pelo placar: o botão <b>Analisar agora</b>
+            cruza estatísticas e odds disponíveis antes de liberar um sinal. Se os dados forem insuficientes, o GRIEL informa que não há sinal validado.
           </span>
         </div>
 
@@ -331,6 +331,18 @@
       </section>
     </main>
   </div>
+
+
+  <dialog id="matchCenterModal" class="market-modal match-center-modal">
+    <div class="modal-head">
+      <div>
+        <span class="eyebrow">GRIEL MATCH CENTER</span>
+        <h3 id="centerTitle">Partida</h3>
+      </div>
+      <button class="icon-btn" id="closeCenter">✕</button>
+    </div>
+    <div id="centerBody" class="modal-body center-body"></div>
+  </dialog>
 
   <dialog id="marketModal" class="market-modal">
     <div class="modal-head">

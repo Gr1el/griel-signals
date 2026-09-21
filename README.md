@@ -1,33 +1,52 @@
-# GRIEL Signals v5 — Live Near-Real-Time
+# GRIEL Signals v7 — Match Center Live
 
-Versão otimizada do GRIEL Signals para reduzir atraso em partidas ao vivo.
+Versão focada em uma experiência de partida ao vivo mais completa e visual.
 
-## Principais mudanças
+## Novidades da v7
 
-- lista de jogos ao vivo: cache de 15 segundos
-- odds ao vivo: cache de 15 segundos
-- estatísticas: cache de 60 segundos
-- predictions: cache de 30 minutos
-- atualização automática do frontend a cada 15 segundos quando a aba está visível
-- mantém o último dado válido se houver uma falha temporária
-- exibe idade da sincronização e quota restante quando disponível
-- traduz alguns status comuns para português
-- API key permanece somente na variável `API_FOOTBALL_KEY` da Netlify
+- placar com escudos dos times
+- minuto + acréscimos (`90'+6` quando o provedor enviar o extra)
+- central da partida em modal
+- linha do tempo de eventos oficiais
+- gols, cartões, substituições e VAR quando o provedor disponibilizar
+- mapa visual do campo com marcadores de eventos
+- estatísticas ao vivo com barras comparativas
+- escalações e formação quando disponíveis
+- odds e mercados continuam em tela separada
+- motor de sinais validado continua cruzando estatísticas + odds
+- atualização do placar/eventos em ciclo de ~15 segundos
+- API Key continua somente na Netlify Function
 
-## Importante sobre produção
+## Limite importante do provedor atual
 
-O plano gratuito da API-FOOTBALL tem 100 requisições por dia. Ele serve para desenvolvimento, mas não para uma plataforma comercial que atualiza partidas a cada poucos segundos.
+A API-FOOTBALL fornece placar, eventos, estatísticas, escalações e odds, mas os eventos documentados se concentram em gols, cartões e substituições. Ela não fornece coordenadas reais da bola/jogador para desenhar com fidelidade onde ocorreu cada falta, ataque ou chute.
 
-A arquitetura desta versão usa cache compartilhado na Netlify para evitar uma chamada ao provedor por cliente, mas um produto comercial deve usar um plano com quota suficiente e monitorar os limites retornados pela API.
+Por isso o campo da GRIEL v7 é identificado como **posição visual ilustrativa**. Ele nunca deve ser apresentado como rastreamento real de posição.
 
-## Deploy
+Para reproduzir exatamente um painel de tracking com lances como “cobrança de falta aos 88'” em uma posição exata do campo, seria necessário contratar um feed esportivo mais granular que forneça incidentes/live tracking e coordenadas.
 
-Substitua os arquivos atuais do repositório pelos desta pasta, preservando:
+## Backend
 
-`netlify/functions/griel-live.js`
-
-A variável secreta na Netlify continua com o nome:
+A Netlify Function usa a variável secreta:
 
 `API_FOOTBALL_KEY`
 
-Não coloque a chave no código ou no GitHub.
+Endpoints internos:
+
+- `/api/griel?action=health`
+- `/api/griel?action=live`
+- `/api/griel?action=matchcenter&fixture=ID`
+- `/api/griel?action=stats&fixture=ID`
+- `/api/griel?action=odds&fixture=ID`
+- `/api/griel?action=prediction&fixture=ID`
+
+## Publicação
+
+Mantenha a estrutura:
+
+- `index.html`
+- `style.css`
+- `app.js`
+- `config.js`
+- `netlify.toml`
+- `netlify/functions/griel-live.js`

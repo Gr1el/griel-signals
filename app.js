@@ -157,7 +157,10 @@ const appState = {
   lastUpdated: null,
   liveError: '',
   quota: null,
-  refreshTimer: null
+  refreshTimer: null,
+  analysisCache: new Map(),
+  matchCenterCache: new Map(),
+  analyzing: new Set()
 };
 
 const LIVE_REFRESH_MS = 15000;
@@ -207,33 +210,45 @@ function fixtureToMatch(item){
   const teams = item.teams || {};
   const goals = item.goals || {};
   const minute = safeNumber(status.elapsed, 0);
+  const extra = safeNumber(status.extra, 0);
   const homeGoals = safeNumber(goals.home, 0);
   const awayGoals = safeNumber(goals.away, 0);
   return {
     id: fixture.id,
     home: teams.home?.name || 'Mandante',
     away: teams.away?.name || 'Visitante',
+    homeId: teams.home?.id || null,
+    awayId: teams.away?.id || null,
     homeLogo: teams.home?.logo || '',
     awayLogo: teams.away?.logo || '',
+    leagueLogo: league.logo || '',
+    flag: league.flag || '',
+    venue: fixture.venue?.name || '',
+    city: fixture.venue?.city || '',
+    referee: fixture.referee || '',
     league: [league.country, league.name].filter(Boolean).join(' • ') || 'Competição',
+    round: league.round || '',
     minute,
+    extra,
     score: `${homeGoals}-${awayGoals}`,
     status: translateStatus(status.long || status.short || 'Ao vivo'),
     statusShort: status.short || '',
+    events: Array.isArray(item.events) ? item.events : [],
     shots: 'sob demanda',
     onTarget: 'sob demanda',
     corners: 'sob demanda',
     cards: 'sob demanda',
     possession: 'sob demanda',
-    pressure: 'Em análise',
-    markets: buildPreliminaryMarkets({
-      home: teams.home?.name || 'Mandante',
-      away: teams.away?.name || 'Visitante',
-      minute,
-      homeGoals,
-      awayGoals
-    })
+    pressure: 'Aguardando análise',
+    markets: []
   };
+}
+
+function minuteLabel(match){
+  const minute = safeNumber(match?.minute, 0);
+  const extra = safeNumber(match?.extra, 0);
+  if (extra > 0) return `${minute}'+${extra}`;
+  return `${minute}'`;
 }
 
 function buildPreliminaryMarkets({home, away, minute, homeGoals, awayGoals}){
@@ -359,7 +374,7 @@ function signalCard(signal, compact = false, isDemo = false){
   return `
     <article class="signal-card">
       <div class="signal-top">
-        <span class="status-badge">⚡ ${isDemo ? 'EXEMPLO DEMO' : 'SINAL GRIEL'}</span>
+        <span class="status-badge">⚡ ${isDemo ? 'EXEMPLO DEMO' : 'SINAL GRIEL VALIDADO'}</span>
         <span class="small-live">${signal.minute}' • ${signal.score}</span>
       </div>
       <div class="signal-title">
@@ -375,15 +390,15 @@ function signalCard(signal, compact = false, isDemo = false){
       <div class="match-state">
         <div><span>Condição para vencer</span><b>${signal.condition}</b></div>
         <div><span>Minuto</span><b>${signal.minute}'</b></div>
-        <div><span>Leitura</span><b>${isDemo ? 'Exemplo' : 'Preliminar'}</b></div>
+        <div><span>Leitura</span><b>${isDemo ? 'Exemplo' : 'Validada'}</b></div>
       </div>
       <div class="metrics-grid">
-        <div class="metric"><span>Odd atual</span><b>${formatOdd(signal.odd)}</b><small>${signal.odd ? 'Cotação disponível' : 'Abra mercados do jogo'}</small></div>
+        <div class="metric"><span>Odd atual</span><b>${formatOdd(signal.odd)}</b><small>${signal.odd ? (signal.bookmaker || 'Cotação ao vivo') : 'Sem odd disponível'}</small></div>
         <div class="metric"><span>Pontuação GRIEL</span><b>${signal.rating}/100</b><small>${badgeLabel(signal.rating)} • não é probabilidade</small></div>
         <div class="metric"><span>Placar</span><b>${signal.score}</b><small>${signal.home} × ${signal.away}</small></div>
-        <div class="metric"><span>Finalizações</span><b>${signal.shots}</b><small>Consultar detalhes</small></div>
-        <div class="metric"><span>No alvo</span><b>${signal.onTarget}</b><small>Consultar detalhes</small></div>
-        <div class="metric"><span>Escanteios</span><b>${signal.corners}</b><small>Consultar detalhes</small></div>
+        <div class="metric"><span>Finalizações</span><b>${signal.shots}</b><small>Dados reais</small></div>
+        <div class="metric"><span>No alvo</span><b>${signal.onTarget}</b><small>Dados reais</small></div>
+        <div class="metric"><span>Escanteios</span><b>${signal.corners}</b><small>Dados reais</small></div>
       </div>
       ${compact ? '' : `
       <div class="why-list">
@@ -396,7 +411,7 @@ function signalCard(signal, compact = false, isDemo = false){
       </div>
       <div class="decision-box">
         <strong>Leitura simples para o cliente</strong>
-        <p>A entrada analisada é <b>${signal.bet}</b>. Confira a odd ao vivo e a condição antes de decidir. Nenhum sinal garante resultado.</p>
+        <p>O mercado validado pelo motor é <b>${signal.bet}</b>, com base nos dados disponíveis no momento da análise. Confira a odd e a condição antes de decidir. Nenhum sinal garante resultado.</p>
       </div>`}
     </article>`;
 }
@@ -415,34 +430,81 @@ function miniSignalCard(signal){
 }
 
 function liveMatchCard(match){
+  const analyzed = appState.analysisCache.get(match.id);
+  const analyzing = appState.analyzing.has(match.id);
+  const signalCount = appState.signals.filter(s => s.matchId === match.id).length;
+  const recent = (match.events || []).slice(-2).reverse();
   return `
-    <article class="live-card">
+    <article class="live-card live-card-pro">
       <div class="live-head">
         <div>
-          <h3>${match.home} × ${match.away}</h3>
-          <small>${match.league}</small>
+          <div class="live-league-line">${match.leagueLogo ? `<img src="${match.leagueLogo}" alt="">` : ''}<span>${match.league}</span>${match.round ? `<small> • ${match.round}</small>` : ''}</div>
         </div>
         <span class="status-badge">🔴 AO VIVO</span>
       </div>
-      <div class="live-score">
-        <div><span class="eyebrow">MINUTO</span><b>${match.minute || 0}'</b></div>
-        <div><span class="eyebrow">PLACAR</span><b>${match.score}</b></div>
-        <div><span class="eyebrow">STATUS</span><b>${match.status}</b></div>
+      <div class="scoreboard-pro">
+        <div class="team-pro home">
+          ${match.homeLogo ? `<img src="${match.homeLogo}" alt="${match.home}">` : '<div class="team-fallback">G</div>'}
+          <strong>${match.home}</strong>
+        </div>
+        <div class="score-pro">
+          <b>${match.score.replace('-', ' - ')}</b>
+          <span>${minuteLabel(match)}</span>
+          <small>${match.status}</small>
+        </div>
+        <div class="team-pro away">
+          ${match.awayLogo ? `<img src="${match.awayLogo}" alt="${match.away}">` : '<div class="team-fallback">G</div>'}
+          <strong>${match.away}</strong>
+        </div>
       </div>
+      ${recent.length ? `<div class="recent-events">${recent.map(e=>eventMiniRow(e, match)).join('')}</div>` : '<div class="recent-events"><span>Nenhum evento detalhado recente retornado pelo provedor.</span></div>'}
       <div class="live-stats">
         <div><span>Finalizações</span><b>${match.shots}</b></div>
         <div><span>No alvo</span><b>${match.onTarget}</b></div>
         <div><span>Escanteios</span><b>${match.corners}</b></div>
         <div><span>Cartões</span><b>${match.cards}</b></div>
         <div><span>Posse</span><b>${match.possession}</b></div>
-        <div><span>Pressão</span><b>${match.pressure}</b></div>
+        <div><span>Análise</span><b>${signalCount ? `${signalCount} sinal(is)` : analyzed ? 'Sem sinal' : 'Pendente'}</b></div>
       </div>
-      <div class="decision-box"><strong>Sincronização</strong><p>${freshnessText()} • atualização automática a cada 15s enquanto a aba estiver aberta.</p></div>
+      <div class="decision-box"><strong>Sincronização</strong><p>${freshnessText()} • placar e eventos atualizam automaticamente. Estatísticas detalhadas são atualizadas pelo provedor em ritmo próprio.</p></div>
       <div class="live-actions">
-        <button class="primary open-markets" data-id="${match.id}">Ver odds e mercados</button>
-        <button class="secondary open-top-signal" data-id="${match.id}">Ver sinal GRIEL</button>
+        <button class="primary open-center" data-id="${match.id}">Central da partida</button>
+        <button class="secondary analyze-match" data-id="${match.id}" ${analyzing ? 'disabled' : ''}>${analyzing ? 'Analisando...' : 'Analisar sinal'}</button>
+        <button class="secondary open-markets" data-id="${match.id}">Odds e mercados</button>
       </div>
     </article>`;
+}
+
+function eventIcon(event){
+  const type = normalized(event?.type);
+  const detail = normalized(event?.detail);
+  if (/goal/.test(type) || /goal|penalty/.test(detail)) return '⚽';
+  if (/card/.test(type) || /yellow|red/.test(detail)) return /red/.test(detail) ? '🟥' : '🟨';
+  if (/subst/.test(type)) return '🔁';
+  if (/var/.test(type)) return '📺';
+  return '●';
+}
+
+function eventTitle(event){
+  const detail = event?.detail || event?.type || 'Evento';
+  const map = {
+    'Normal Goal':'Gol', 'Penalty':'Gol de pênalti', 'Own Goal':'Gol contra', 'Missed Penalty':'Pênalti perdido',
+    'Yellow Card':'Cartão amarelo', 'Red Card':'Cartão vermelho', 'Yellow-Red Card':'Segundo amarelo',
+    'Substitution 1':'Substituição', 'Substitution 2':'Substituição', 'Substitution 3':'Substituição'
+  };
+  return map[detail] || detail;
+}
+
+function eventMinute(event){
+  const base = safeNumber(event?.time?.elapsed, 0);
+  const extra = safeNumber(event?.time?.extra, 0);
+  return extra ? `${base}'+${extra}` : `${base}'`;
+}
+
+function eventMiniRow(event, match){
+  const team = event?.team?.name || '';
+  const player = event?.player?.name || '';
+  return `<div class="event-mini"><span>${eventIcon(event)}</span><div><b>${eventTitle(event)} • ${eventMinute(event)}</b><small>${[team,player].filter(Boolean).join(' • ')}</small></div></div>`;
 }
 
 function catalogCard(item){
@@ -478,15 +540,29 @@ function goToPage(page){
 function renderDashboard(){
   const hasLiveSignal = appState.connected && appState.signals.length > 0;
   const exampleSignals = buildSignalsFromMatches(structuredClone(demoMatches));
+
   if (hasLiveSignal) {
-    $('#featuredSignal').innerHTML = signalCard(appState.signals[0]);
-    $('#miniSignals').innerHTML = appState.signals.slice(1,4).map(miniSignalCard).join('') || '<div class="empty-state">Nenhum outro sinal ao vivo agora.</div>';
+    const best = appState.signals[0];
+    $('#featuredSignal').innerHTML = signalCard(best);
+    $('#miniSignals').innerHTML = appState.signals.slice(1,4).map(miniSignalCard).join('') || '<div class="empty-state">Nenhum outro sinal validado agora.</div>';
+    $('#heroSignalEyebrow').textContent = 'SINAL LIVE VALIDADO';
+    $('#heroSignalLabel').textContent = `${best.home} × ${best.away}`;
+    $('#heroSignalBet').textContent = best.bet;
+    $('#heroSignalText').textContent = `Odd ${formatOdd(best.odd)} • ${best.rating}/100 • validado com estatísticas e mercado ao vivo disponíveis.`;
   } else if (appState.connected) {
-    $('#featuredSignal').innerHTML = '<div class="empty-state"><b>GRIEL Live conectado.</b><br>Nenhum sinal preliminar disponível neste momento. Isso pode acontecer mesmo com jogos ao vivo.</div>';
-    $('#miniSignals').innerHTML = '<div class="empty-state">Aguardando novas condições de sinal.</div>';
+    $('#featuredSignal').innerHTML = '<div class="empty-state"><b>GRIEL Live conectado.</b><br>Nenhum sinal validado ainda. Abra <b>Jogos ao vivo</b> e use <b>Analisar agora</b>. O GRIEL não inventa uma entrada quando faltam estatísticas ou odds.</div>';
+    $('#miniSignals').innerHTML = '<div class="empty-state">Aguardando análises reais.</div>';
+    $('#heroSignalEyebrow').textContent = 'MOTOR GRIEL LIVE';
+    $('#heroSignalLabel').textContent = 'ANÁLISE REAL';
+    $('#heroSignalBet').textContent = 'Nenhum sinal validado ainda';
+    $('#heroSignalText').textContent = `${appState.matches.length} jogo(s) ao vivo conectados. Analise uma partida para cruzar estatísticas + odds.`;
   } else {
     $('#featuredSignal').innerHTML = signalCard(exampleSignals[0], false, true);
     $('#miniSignals').innerHTML = exampleSignals.slice(1,4).map(miniSignalCard).join('');
+    $('#heroSignalEyebrow').textContent = 'EXEMPLO DEMONSTRATIVO';
+    $('#heroSignalLabel').textContent = 'O QUE APOSTAR';
+    $('#heroSignalBet').textContent = 'Barcelona vence';
+    $('#heroSignalText').textContent = 'Exemplo visual exibido apenas quando o backend LIVE está indisponível.';
   }
 
   const currentSignals = hasLiveSignal ? appState.signals : [];
@@ -530,8 +606,9 @@ function renderLiveMatches(){
   $('#liveMatches').innerHTML = filtered.length
     ? filtered.map(liveMatchCard).join('')
     : `<div class="empty-state">${appState.connected ? 'GRIEL Live conectado, mas não há partidas ao vivo retornadas pela API agora.' : 'Não foi possível carregar partidas reais.'}</div>`;
+  $$('.open-center').forEach(btn => btn.addEventListener('click', () => openMatchCenter(parseInt(btn.dataset.id,10))));
   $$('.open-markets').forEach(btn => btn.addEventListener('click', () => openMarketModal(parseInt(btn.dataset.id,10))));
-  $$('.open-top-signal').forEach(btn => btn.addEventListener('click', () => openTopOpportunity(parseInt(btn.dataset.id,10))));
+  $$('.analyze-match').forEach(btn => btn.addEventListener('click', () => analyzeMatch(parseInt(btn.dataset.id,10))));
 }
 
 function renderMarketsPage(){ $('#marketCatalog').innerHTML = marketCatalog.map(catalogCard).join(''); }
@@ -583,7 +660,436 @@ function flattenOdds(response){
       }
     }
   }
-  return out.filter(x => !x.suspended).slice(0, 36);
+  return out.filter(x => !x.suspended).slice(0, 160);
+}
+
+
+function numericValue(value){
+  if (value === null || value === undefined || value === '—') return 0;
+  const n = parseFloat(String(value).replace('%','').replace(',','.'));
+  return Number.isFinite(n) ? n : 0;
+}
+
+function statForSide(side, type){
+  return numericValue(statValue(side?.stats || [], type));
+}
+
+function snapshotFromStats(parsed){
+  if (!parsed || !parsed.sides || parsed.sides.length < 2) return null;
+  const toSide = side => ({
+    team: side.team,
+    shots: statForSide(side, 'Total Shots'),
+    onTarget: statForSide(side, 'Shots on Goal'),
+    corners: statForSide(side, 'Corner Kicks'),
+    possession: statForSide(side, 'Ball Possession'),
+    yellow: statForSide(side, 'Yellow Cards'),
+    red: statForSide(side, 'Red Cards')
+  });
+  return { home: toSide(parsed.sides[0]), away: toSide(parsed.sides[1]) };
+}
+
+function oddNumber(value){
+  const n = Number(value);
+  return Number.isFinite(n) ? n : null;
+}
+
+function normalized(value){
+  return String(value || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'').trim();
+}
+
+function lineFromOdd(row){
+  const direct = Number(row.handicap);
+  if (Number.isFinite(direct)) return direct;
+  const text = `${row.choice || ''} ${row.market || ''}`.replace(',','.');
+  const match = text.match(/(?:over|under|mais de|menos de)\s*([0-9]+(?:\.[0-9]+)?)/i) || text.match(/([0-9]+(?:\.[0-9]+)?)/);
+  return match ? Number(match[1]) : null;
+}
+
+function getOddSettings(){
+  const saved = JSON.parse(localStorage.getItem('grielSettings') || '{}');
+  return {
+    minOdd: Number(saved.minOdd || $('#minOdd')?.value || 1.01),
+    maxOdd: Number(saved.maxOdd || $('#maxOdd')?.value || 20),
+    minScore: Number(saved.minScore || $('#minScore')?.value || 72)
+  };
+}
+
+function usableOdd(row){
+  const n = oddNumber(row.odd);
+  const {minOdd,maxOdd} = getOddSettings();
+  return n !== null && n >= minOdd && n <= maxOdd && !row.suspended;
+}
+
+function bestOdd(odds, predicate){
+  return (odds || []).filter(o => usableOdd(o) && predicate(o)).sort((a,b)=>Number(b.odd)-Number(a.odd))[0] || null;
+}
+
+function winnerChoiceMatches(row, team, side){
+  const choice = normalized(row.choice);
+  const teamName = normalized(team);
+  return choice === teamName || choice.includes(teamName) || choice === side || choice === (side === 'home' ? '1' : '2') || choice === (side === 'home' ? 'casa' : 'fora');
+}
+
+function marketLooksLikeWinner(row){
+  const m = normalized(row.market);
+  return /winner|1x2|match result|full time result|resultado|moneyline/.test(m);
+}
+
+function marketLooksLikeTotals(row){
+  const m = normalized(row.market);
+  return /over.?under|total.*goal|goals.*total|total goals|gols/.test(m) && !/team|home|away|time da/.test(m);
+}
+
+function marketLooksLikeBtts(row){
+  const m = normalized(row.market);
+  return /both teams.*score|btts|ambas.*marcam/.test(m);
+}
+
+function marketLooksLikeCorners(row){
+  const m = normalized(row.market);
+  return /corner|escanteio/.test(m) && /total|over.?under|corner/.test(m);
+}
+
+function marketLooksLikeCards(row){
+  const m = normalized(row.market);
+  return /card|cartao/.test(m) && /total|over.?under|card/.test(m);
+}
+
+function isOverChoice(row){
+  return /over|mais de/.test(normalized(row.choice));
+}
+
+function isYesChoice(row){
+  return /yes|sim/.test(normalized(row.choice));
+}
+
+function makeSignal(match, market, meta){
+  return {
+    id: `${match.id}-${normalized(meta.bet).replace(/[^a-z0-9]+/g,'-')}`,
+    matchId: match.id,
+    home: match.home,
+    away: match.away,
+    league: match.league,
+    minute: match.minute,
+    score: match.score,
+    status: match.status,
+    shots: meta.shots,
+    onTarget: meta.onTarget,
+    corners: meta.corners,
+    cards: meta.cards,
+    pressure: meta.pressure,
+    marketType: meta.marketType,
+    bet: meta.bet,
+    odd: oddNumber(market.odd),
+    bookmaker: market.bookmaker || 'Bookmaker',
+    rating: Math.max(0, Math.min(95, Math.round(meta.rating))),
+    condition: meta.condition,
+    why: meta.why,
+    risk: meta.risk,
+    validatedAt: new Date().toISOString(),
+    sourceVerified: true
+  };
+}
+
+function generateValidatedSignals(match, parsedStats, odds){
+  const snap = snapshotFromStats(parsedStats);
+  if (!snap || !odds?.length) return [];
+
+  const result = [];
+  const score = parseScore(match.score);
+  const totalShots = snap.home.shots + snap.away.shots;
+  const totalTarget = snap.home.onTarget + snap.away.onTarget;
+  const totalCorners = snap.home.corners + snap.away.corners;
+  const totalCards = snap.home.yellow + snap.away.yellow + snap.home.red + snap.away.red;
+  const targetDiff = snap.home.onTarget - snap.away.onTarget;
+  const shotsDiff = snap.home.shots - snap.away.shots;
+  const possessionDiff = snap.home.possession - snap.away.possession;
+  const activity = totalShots >= 16 || totalTarget >= 6;
+  const pressure = totalTarget >= 9 || totalShots >= 24 ? 'Alta' : totalTarget >= 5 || totalShots >= 16 ? 'Média/Alta' : 'Moderada';
+  const common = {
+    shots: `${snap.home.shots}-${snap.away.shots}`,
+    onTarget: `${snap.home.onTarget}-${snap.away.onTarget}`,
+    corners: `${snap.home.corners}-${snap.away.corners}`,
+    cards: `${snap.home.yellow + snap.home.red}-${snap.away.yellow + snap.away.red}`,
+    pressure
+  };
+
+  // Resultado do jogo: só libera quando o líder também mostra vantagem mínima nos dados.
+  if (match.minute >= 60 && match.minute <= 89 && score.homeGoals !== score.awayGoals) {
+    const homeLeading = score.homeGoals > score.awayGoals;
+    const leader = homeLeading ? match.home : match.away;
+    const side = homeLeading ? 'home' : 'away';
+    const goalDiff = Math.abs(score.homeGoals - score.awayGoals);
+    const statAdv = homeLeading ? (targetDiff >= 1 || shotsDiff >= 4 || possessionDiff >= 7) : (targetDiff <= -1 || shotsDiff <= -4 || possessionDiff <= -7);
+    const market = bestOdd(odds, o => marketLooksLikeWinner(o) && winnerChoiceMatches(o, leader, side));
+    if (market && statAdv) {
+      const advTarget = homeLeading ? targetDiff : -targetDiff;
+      const advShots = homeLeading ? shotsDiff : -shotsDiff;
+      const rating = 70 + goalDiff*5 + Math.max(0,advTarget)*2 + Math.min(5,Math.max(0,advShots)/2) + (match.minute >= 75 ? 3 : 0);
+      result.push(makeSignal(match, market, {
+        ...common,
+        marketType:'Resultado do jogo',
+        bet:`${leader} vence`,
+        rating,
+        condition:`${leader} precisa terminar o tempo normal vencendo.`,
+        why:[`${leader} lidera o placar por ${goalDiff} gol(s)`, `Finalizações ${common.shots}`, `Chutes no alvo ${common.onTarget}`, `Odd live ${formatOdd(market.odd)} disponível em ${market.bookmaker}`],
+        risk:'Mesmo liderando e com vantagem nos dados, o adversário ainda pode empatar ou virar.'
+      }));
+    }
+  }
+
+  // Próxima linha de gols: exige mercado real e volume ofensivo suficiente.
+  if (match.minute >= 40 && match.minute <= 84 && activity) {
+    const targetLine = score.total + 0.5;
+    const market = bestOdd(odds, o => marketLooksLikeTotals(o) && isOverChoice(o) && Math.abs((lineFromOdd(o) ?? -99) - targetLine) < 0.11);
+    if (market) {
+      let timeAdj = match.minute <= 65 ? 6 : match.minute <= 75 ? 2 : match.minute <= 80 ? -2 : -7;
+      const rating = 66 + Math.min(12,totalTarget*1.5) + Math.min(8,totalShots/4) + timeAdj;
+      result.push(makeSignal(match, market, {
+        ...common,
+        marketType:'Gols da partida',
+        bet:`Over ${targetLine.toFixed(1)} gols`,
+        rating,
+        condition:`O jogo precisa terminar com pelo menos ${Math.floor(targetLine)+1} gols no total.`,
+        why:[`${totalShots} finalizações no jogo`, `${totalTarget} chutes no alvo`, `Placar atual ${match.score}`, `Mercado live encontrado com odd ${formatOdd(market.odd)}`],
+        risk:`Ainda precisa sair pelo menos 1 gol. Aos ${match.minute}', o tempo restante é um fator de risco.`
+      }));
+    }
+  }
+
+  // Ambas marcam: só quando um lado ainda precisa marcar e tem produção ofensiva real.
+  if (match.minute >= 40 && match.minute <= 78 && ((score.homeGoals > 0 && score.awayGoals === 0) || (score.awayGoals > 0 && score.homeGoals === 0))) {
+    const missing = score.homeGoals === 0 ? snap.home : snap.away;
+    const missingName = score.homeGoals === 0 ? match.home : match.away;
+    const market = bestOdd(odds, o => marketLooksLikeBtts(o) && isYesChoice(o));
+    if (market && missing.shots >= 6 && missing.onTarget >= 2) {
+      const rating = 68 + Math.min(12, missing.onTarget*3) + Math.min(7, missing.shots/2) - (match.minute > 70 ? 4 : 0);
+      result.push(makeSignal(match, market, {
+        ...common,
+        marketType:'Ambas marcam',
+        bet:'Ambas marcam — SIM',
+        rating,
+        condition:`${missingName} ainda precisa marcar pelo menos 1 gol.`,
+        why:[`${missingName} tem ${missing.shots} finalizações`, `${missingName} tem ${missing.onTarget} chutes no alvo`, `Odd live ${formatOdd(market.odd)} disponível`],
+        risk:`${missingName} pode continuar criando sem converter as chances.`
+      }));
+    }
+  }
+
+  // Escanteios: procura a menor linha Over ainda não atingida e próxima do total atual.
+  if (match.minute >= 35 && match.minute <= 84 && totalCorners >= 5) {
+    const candidates = odds.filter(o => usableOdd(o) && marketLooksLikeCorners(o) && isOverChoice(o)).map(o => ({o,line:lineFromOdd(o)})).filter(x => Number.isFinite(x.line) && x.line > totalCorners && x.line <= totalCorners + 2.5).sort((a,b)=>a.line-b.line || Number(b.o.odd)-Number(a.o.odd));
+    const picked = candidates[0];
+    if (picked) {
+      const need = Math.floor(picked.line) + 1 - totalCorners;
+      const pace = totalCorners / Math.max(match.minute,1) * 90;
+      const rating = 67 + Math.min(14,totalCorners) + (pace >= picked.line+1 ? 6 : 0) - Math.max(0,need-1)*5;
+      result.push(makeSignal(match, picked.o, {
+        ...common,
+        marketType:'Escanteios',
+        bet:`Over ${picked.line.toFixed(1)} escanteios`,
+        rating,
+        condition:`A partida precisa terminar com pelo menos ${Math.floor(picked.line)+1} escanteios.`,
+        why:[`Já ocorreram ${totalCorners} escanteios`, `Ritmo projetado de aproximadamente ${pace.toFixed(1)} escanteios em 90 minutos`, `Odd live ${formatOdd(picked.o.odd)} disponível`],
+        risk:`Ainda faltam ${need} escanteio(s); o ritmo da partida pode cair.`
+      }));
+    }
+  }
+
+  // Cartões: mesma lógica de linha próxima, quando o mercado existir.
+  if (match.minute >= 35 && match.minute <= 84 && totalCards >= 2) {
+    const candidates = odds.filter(o => usableOdd(o) && marketLooksLikeCards(o) && isOverChoice(o)).map(o => ({o,line:lineFromOdd(o)})).filter(x => Number.isFinite(x.line) && x.line > totalCards && x.line <= totalCards + 2).sort((a,b)=>a.line-b.line || Number(b.o.odd)-Number(a.o.odd));
+    const picked = candidates[0];
+    if (picked) {
+      const need = Math.floor(picked.line) + 1 - totalCards;
+      const rating = 64 + Math.min(12,totalCards*2) - Math.max(0,need-1)*4;
+      result.push(makeSignal(match, picked.o, {
+        ...common,
+        marketType:'Cartões',
+        bet:`Over ${picked.line.toFixed(1)} cartões`,
+        rating,
+        condition:`A partida precisa terminar com pelo menos ${Math.floor(picked.line)+1} cartões.`,
+        why:[`Já ocorreram ${totalCards} cartões contabilizados`, `Mercado live disponível com odd ${formatOdd(picked.o.odd)}`],
+        risk:`A intensidade disciplinar pode diminuir e a linha não ser atingida.`
+      }));
+    }
+  }
+
+  const {minScore} = getOddSettings();
+  return result.filter(s => s.rating >= minScore).sort((a,b)=>b.rating-a.rating).slice(0,5);
+}
+
+function applyStatsToMatch(match, parsedStats){
+  const snap = snapshotFromStats(parsedStats);
+  if (!snap) return;
+  match.shots = `${snap.home.shots}-${snap.away.shots}`;
+  match.onTarget = `${snap.home.onTarget}-${snap.away.onTarget}`;
+  match.corners = `${snap.home.corners}-${snap.away.corners}`;
+  match.cards = `${snap.home.yellow + snap.home.red}-${snap.away.yellow + snap.away.red}`;
+  match.possession = `${snap.home.possession || 0}%-${snap.away.possession || 0}%`;
+  const totalTarget = snap.home.onTarget + snap.away.onTarget;
+  const totalShots = snap.home.shots + snap.away.shots;
+  match.pressure = totalTarget >= 9 || totalShots >= 24 ? 'Alta' : totalTarget >= 5 || totalShots >= 16 ? 'Média/Alta' : 'Moderada';
+}
+
+async function fetchRealAnalysis(matchId){
+  const cached = appState.analysisCache.get(matchId);
+  if (cached && Date.now() - cached.at < 15000) return cached;
+
+  const [oddsResp, statsResp] = await Promise.all([
+    fetch(`${LIVE_ENDPOINT}?action=odds&fixture=${matchId}&v=${Math.floor(Date.now()/15000)}`, {cache:'no-store'}),
+    fetch(`${LIVE_ENDPOINT}?action=stats&fixture=${matchId}&v=${Math.floor(Date.now()/60000)}`, {cache:'no-store'})
+  ]);
+  const [oddsData, statsData] = await Promise.all([oddsResp.json(), statsResp.json()]);
+  if (!oddsResp.ok && !statsResp.ok) throw new Error(oddsData.detail || statsData.detail || 'Falha ao consultar odds e estatísticas.');
+
+  const bundle = {
+    at: Date.now(),
+    odds: oddsData.ok ? flattenOdds(oddsData.response) : [],
+    stats: statsData.ok ? parseStatsResponse(statsData.response) : null,
+    oddsQuota: oddsData.quota || null,
+    statsQuota: statsData.quota || null
+  };
+  appState.analysisCache.set(matchId, bundle);
+  return bundle;
+}
+
+async function analyzeMatch(matchId){
+  const match = appState.matches.find(m => m.id === matchId);
+  if (!match || appState.analyzing.has(matchId)) return;
+  appState.analyzing.add(matchId);
+  renderLiveMatches();
+  toast(`Analisando ${match.home} × ${match.away} com dados reais...`);
+  try {
+    const bundle = await fetchRealAnalysis(matchId);
+    applyStatsToMatch(match, bundle.stats);
+    const validated = generateValidatedSignals(match, bundle.stats, bundle.odds);
+    appState.signals = appState.signals.filter(s => s.matchId !== matchId).concat(validated).sort((a,b)=>b.rating-a.rating);
+    renderAll();
+    if (validated.length) {
+      goToPage('signals');
+      toast(`${validated.length} sinal(is) validado(s). Melhor: ${validated[0].bet}`);
+    } else {
+      toast('Nenhum sinal validado: faltam condições, estatísticas ou odd compatível.');
+    }
+  } catch (error) {
+    toast(`Análise indisponível: ${error.message}`);
+  } finally {
+    appState.analyzing.delete(matchId);
+    renderLiveMatches();
+  }
+}
+
+
+function detailStat(response, type){
+  if (!Array.isArray(response)) return ['—','—'];
+  return response.slice(0,2).map(side => statValue(side.statistics || [], type) ?? '—');
+}
+
+function renderStatBar(label, values){
+  const a = numericValue(values[0]);
+  const b = numericValue(values[1]);
+  const sum = a + b || 1;
+  const ap = Math.max(5, Math.round((a/sum)*100));
+  const bp = Math.max(5, 100-ap);
+  return `<div class="center-stat"><div class="center-stat-values"><b>${values[0]}</b><span>${label}</span><b>${values[1]}</b></div><div class="dual-bar"><i style="width:${ap}%"></i><i style="width:${bp}%"></i></div></div>`;
+}
+
+function eventMarkerClass(event, match){
+  const isHome = event?.team?.id && event.team.id === match.homeId;
+  const type = normalized(event?.type);
+  if (/goal/.test(type)) return isHome ? 'home goal' : 'away goal';
+  if (/card/.test(type)) return isHome ? 'home card' : 'away card';
+  if (/subst/.test(type)) return isHome ? 'home subst' : 'away subst';
+  return isHome ? 'home' : 'away';
+}
+
+function pitchEventPosition(event, match, index){
+  const isHome = event?.team?.id && event.team.id === match.homeId;
+  const type = normalized(event?.type);
+  let x = isHome ? 28 : 72;
+  let y = 25 + ((index * 19) % 50);
+  if (/goal/.test(type)) x = isHome ? 84 : 16;
+  if (/subst/.test(type)) y = 8;
+  if (/card/.test(type)) x = isHome ? 38 : 62;
+  return {x,y};
+}
+
+function renderPitch(events, match){
+  const selected = (events || []).slice(-8);
+  const markers = selected.map((event, i)=>{
+    const pos = pitchEventPosition(event, match, i);
+    return `<button class="pitch-marker ${eventMarkerClass(event, match)}" style="left:${pos.x}%;top:${pos.y}%" title="${eventTitle(event)} ${eventMinute(event)}">${eventIcon(event)}<span>${eventMinute(event)}</span></button>`;
+  }).join('');
+  const last = selected[selected.length-1];
+  return `<div class="pitch-wrap">
+    <div class="pitch-caption"><span>MAPA DE EVENTOS</span><small>Posição visual ilustrativa; a API atual não fornece coordenadas de campo.</small></div>
+    <div class="football-pitch"><div class="half-line"></div><div class="center-circle"></div><div class="box left"></div><div class="box right"></div>${markers}</div>
+    ${last ? `<div class="last-event-banner"><span>${eventIcon(last)}</span><div><b>${eventTitle(last)} • ${eventMinute(last)}</b><small>${[last.team?.name,last.player?.name,last.assist?.name].filter(Boolean).join(' • ')}</small></div></div>` : '<div class="last-event-banner"><div><b>Aguardando eventos oficiais</b><small>Gols, cartões e substituições aparecem quando o provedor os disponibiliza.</small></div></div>'}
+  </div>`;
+}
+
+function renderLineups(lineups){
+  if (!Array.isArray(lineups) || !lineups.length) return '<div class="empty-state">Escalações não disponíveis para esta competição.</div>';
+  return `<div class="lineup-grid">${lineups.slice(0,2).map(l=>`<div class="lineup-team"><div class="lineup-head">${l.team?.logo ? `<img src="${l.team.logo}" alt="">` : ''}<div><b>${l.team?.name || 'Time'}</b><small>Formação ${l.formation || '—'}</small></div></div><ol>${(l.startXI || []).map(p=>`<li><span>${p.player?.number || '•'}</span>${p.player?.name || 'Jogador'} <small>${p.player?.pos || ''}</small></li>`).join('')}</ol></div>`).join('')}</div>`;
+}
+
+function renderMatchCenter(match, detail){
+  const fixture = detail?.fixture || {};
+  const events = Array.isArray(detail?.events) ? detail.events : (match.events || []);
+  const stats = Array.isArray(detail?.statistics) ? detail.statistics : [];
+  const lineups = Array.isArray(detail?.lineups) ? detail.lineups : [];
+  const goals = detail?.goals || parseScore(match.score);
+  const scoreText = detail?.goals ? `${goals.home ?? 0} - ${goals.away ?? 0}` : match.score.replace('-', ' - ');
+  const elapsed = fixture.status?.elapsed ?? match.minute;
+  const extra = fixture.status?.extra ?? match.extra;
+  const minuteText = extra ? `${elapsed}'+${extra}` : `${elapsed}'`;
+  const home = detail?.teams?.home || {name:match.home,logo:match.homeLogo};
+  const away = detail?.teams?.away || {name:match.away,logo:match.awayLogo};
+  const timeline = [...events].sort((a,b)=>(safeNumber(b.time?.elapsed)-safeNumber(a.time?.elapsed))).slice(0,18);
+  const statRows = [
+    ['Finalizações', detailStat(stats,'Total Shots')], ['No alvo', detailStat(stats,'Shots on Goal')],
+    ['Escanteios', detailStat(stats,'Corner Kicks')], ['Posse', detailStat(stats,'Ball Possession')],
+    ['Faltas', detailStat(stats,'Fouls')], ['Amarelos', detailStat(stats,'Yellow Cards')]
+  ];
+  return `<div class="center-scoreboard">
+      <div class="center-team">${home.logo ? `<img src="${home.logo}" alt="">` : ''}<b>${home.name}</b></div>
+      <div class="center-score"><strong>${scoreText}</strong><span>${minuteText}</span><small>${translateStatus(fixture.status?.long || match.status)}${match.venue ? ` • ${match.venue}` : ''}</small></div>
+      <div class="center-team">${away.logo ? `<img src="${away.logo}" alt="">` : ''}<b>${away.name}</b></div>
+    </div>
+    <div class="center-grid">
+      <section>${renderPitch(events, match)}</section>
+      <section class="center-timeline"><div class="center-section-title"><b>Linha do tempo</b><span>atualização ~15s</span></div>${timeline.length ? timeline.map(e=>`<div class="timeline-row"><span class="timeline-minute">${eventMinute(e)}</span><span class="timeline-icon">${eventIcon(e)}</span><div><b>${eventTitle(e)}</b><small>${[e.team?.name,e.player?.name,e.assist?.name ? `Assist.: ${e.assist.name}` : ''].filter(Boolean).join(' • ')}</small></div></div>`).join('') : '<div class="empty-state">Nenhum evento oficial retornado ainda.</div>'}</section>
+    </div>
+    <div class="center-panels">
+      <section class="center-stats-panel"><div class="center-section-title"><b>Estatísticas ao vivo</b><span>atualização ~60s</span></div>${stats.length ? statRows.map(([l,v])=>renderStatBar(l,v)).join('') : '<div class="empty-state">Estatísticas indisponíveis para esta liga/jogo.</div>'}</section>
+      <section><div class="center-section-title"><b>Escalações</b><span>${lineups.length ? 'dados do provedor' : 'indisponível'}</span></div>${renderLineups(lineups)}</section>
+    </div>
+    <div class="center-disclaimer">A GRIEL mostra apenas eventos oficialmente recebidos pela API atual. Lances como cobrança de falta, ataque perigoso e posição exata da bola exigem um feed de incidentes/trackeamento com coordenadas, que este provedor não fornece.</div>`;
+}
+
+async function openMatchCenter(matchId){
+  const match = appState.matches.find(m=>m.id===matchId);
+  if (!match) return;
+  $('#centerTitle').textContent = `${match.home} × ${match.away}`;
+  $('#centerBody').innerHTML = '<div class="empty-state">Carregando central ao vivo...</div>';
+  $('#matchCenterModal').showModal();
+  try {
+    const cached = appState.matchCenterCache.get(matchId);
+    let detail;
+    if (cached && Date.now() - cached.at < 15000) {
+      detail = cached.detail;
+    } else {
+      const resp = await fetch(`${LIVE_ENDPOINT}?action=matchcenter&fixture=${matchId}&v=${Math.floor(Date.now()/15000)}`, {cache:'no-store'});
+      const data = await resp.json();
+      if (!resp.ok || !data.ok) throw new Error(data.detail || data.error || 'Falha ao carregar central.');
+      detail = Array.isArray(data.response) ? data.response[0] : null;
+      appState.matchCenterCache.set(matchId,{at:Date.now(),detail});
+    }
+    $('#centerBody').innerHTML = detail ? renderMatchCenter(match, detail) : '<div class="empty-state">O provedor não retornou detalhes desta partida.</div>';
+  } catch (error) {
+    $('#centerBody').innerHTML = `<div class="empty-state">Não foi possível carregar a central agora.<br>${error.message}</div>`;
+  }
 }
 
 async function openMarketModal(matchId){
@@ -624,12 +1130,7 @@ async function openMarketModal(matchId){
   }
 }
 
-function openTopOpportunity(matchId){
-  const related = appState.signals.filter(s => s.matchId === matchId).sort((a,b)=>b.rating-a.rating);
-  if(!related.length) { toast('Este jogo ainda não atingiu uma regra preliminar da GRIEL.'); return; }
-  goToPage('signals');
-  toast(`Sinal atual: ${related[0].bet}`);
-}
+function openTopOpportunity(matchId){ return analyzeMatch(matchId); }
 
 function calculateReturn(){
   const stake = parseFloat($('#stakeInput').value || '0');
@@ -688,7 +1189,15 @@ async function loadLiveData({showToast = false, background = false} = {}){
     appState.lastUpdated = data.updatedAt || new Date().toISOString();
     appState.quota = data.quota || null;
     appState.matches = (data.response || []).map(fixtureToMatch).filter(m => m.id);
-    appState.signals = buildSignalsFromMatches(appState.matches);
+    appState.matches.forEach(m => {
+      const cached = appState.analysisCache.get(m.id);
+      if (cached?.stats) applyStatsToMatch(m, cached.stats);
+    });
+    const liveIds = new Set(appState.matches.map(m => m.id));
+    appState.signals = appState.signals.filter(s => liveIds.has(s.matchId)).map(s => {
+      const m = appState.matches.find(x => x.id === s.matchId);
+      return m ? {...s, minute:m.minute, score:m.score, status:m.status} : s;
+    }).sort((a,b)=>b.rating-a.rating);
     $('#apiStatus').innerHTML = `<b>GRIEL Live conectado.</b><br>${appState.matches.length} jogo(s) ao vivo • ${freshnessText()}${appState.quota?.dailyRemaining ? ` • ${appState.quota.dailyRemaining} requisições restantes hoje` : ''}.`;
   } catch (error) {
     appState.liveError = error.message;
@@ -782,6 +1291,12 @@ function bindEvents(){
   $('#refreshData').addEventListener('click', () => loadLiveData({showToast:true}));
   $('#showAlertDemo').addEventListener('click', () => toast(appState.connected ? 'Alertas GRIEL prontos para futura integração push/Telegram.' : 'Alertas em modo demonstração.'));
   $('#closeModal').addEventListener('click', () => $('#marketModal').close());
+  $('#closeCenter').addEventListener('click', () => $('#matchCenterModal').close());
+  $('#matchCenterModal').addEventListener('click', (e) => {
+    const rect = e.currentTarget.getBoundingClientRect();
+    const clickedOutside = e.clientY < rect.top || e.clientY > rect.bottom || e.clientX < rect.left || e.clientX > rect.right;
+    if(clickedOutside) e.currentTarget.close();
+  });
   $('#marketModal').addEventListener('click', (e) => {
     const rect = e.currentTarget.getBoundingClientRect();
     const clickedOutside = e.clientY < rect.top || e.clientY > rect.bottom || e.clientX < rect.left || e.clientX > rect.right;
