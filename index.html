@@ -3,263 +3,189 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta name="theme-color" content="#07110f">
-  <title>GRIEL Signals — Plataforma Premium</title>
+  <meta name="theme-color" content="#050b09">
+  <meta name="color-scheme" content="dark">
+  <title>GRIEL Signals — Ultimate Live</title>
   <link rel="stylesheet" href="style.css">
 </head>
 <body>
-  <div class="shell">
+  <div class="app-shell">
     <aside class="sidebar">
       <div class="brand">
-        <div class="brand-mark">G</div>
+        <div class="brand-logo">G</div>
         <div>
           <strong>GRIEL</strong>
           <span>SIGNALS</span>
         </div>
       </div>
 
-      <nav class="nav">
-        <button class="active" data-page="dashboard">🏠 <span>Painel</span></button>
-        <button data-page="signals">⚡ <span>Sinais</span></button>
-        <button data-page="live">🔴 <span>Jogos ao vivo</span></button>
-        <button data-page="markets">🎯 <span>Mercados</span></button>
-        <button data-page="academy">📘 <span>Academy</span></button>
-        <button data-page="history">📊 <span>Histórico</span></button>
-        <button data-page="settings">⚙️ <span>Configurações</span></button>
+      <nav class="nav" aria-label="Navegação principal">
+        <button class="active" data-page="dashboard"><span class="nav-icon">⌂</span><span>Painel</span></button>
+        <button data-page="live"><span class="nav-icon">●</span><span>Ao vivo</span></button>
+        <button data-page="signals"><span class="nav-icon">ϟ</span><span>Sinais</span></button>
+        <button data-page="markets"><span class="nav-icon">◎</span><span>Mercados</span></button>
+        <button data-page="academy"><span class="nav-icon">▣</span><span>Academy</span></button>
+        <button data-page="history"><span class="nav-icon">▥</span><span>Histórico</span></button>
+        <button data-page="settings"><span class="nav-icon">⚙</span><span>Configurações</span></button>
       </nav>
 
-      <div class="engine-card">
-        <div class="status-dot"></div>
+      <div class="side-status">
+        <div class="live-dot"></div>
         <div>
-          <strong id="engineLabel">Motor GRIEL ativo</strong>
-          <small id="engineModeLabel">Modo demonstração</small>
+          <strong id="sideEngine">GRIEL Engine</strong>
+          <small id="sideEngineSub">Conectando...</small>
         </div>
       </div>
 
-      <div class="owner-badge">
+      <div class="brand-legal">
         <strong>GRIEL™</strong>
-        <small>Interface proprietária personalizada</small>
+        <small>Ultimate Live 9.0</small>
       </div>
     </aside>
 
-    <main class="content">
+    <main class="main">
       <header class="topbar">
         <div>
-          <h1 id="pageTitle">Painel Premium</h1>
-          <p id="pageSubtitle">Sinais explicados em linguagem simples, prontos para o cliente entender.</p>
+          <h1 id="pageTitle">Painel</h1>
+          <p id="pageSubtitle">Central de acompanhamento e análise em tempo real.</p>
         </div>
-        <div class="topbar-right">
-          <div class="mode-pill" id="modePill">DEMO</div>
-          <button class="icon-btn" id="refreshData" title="Atualizar">↻</button>
-          <button class="icon-btn" id="showAlertDemo" title="Notificações">🔔</button>
+        <div class="top-actions">
+          <div class="status-pill" id="syncPill"><span></span><b>CONECTANDO</b></div>
+          <div class="quota-pill" id="quotaPill" title="Cota da API">API —</div>
+          <button class="icon-btn" id="notifyBtn" title="Ativar alertas">🔔</button>
+          <button class="icon-btn" id="refreshBtn" title="Atualizar agora">↻</button>
           <div class="avatar">G</div>
         </div>
       </header>
 
       <section class="page active" id="dashboard">
-        <div class="hero-card">
+        <div class="command-hero">
           <div class="hero-copy">
-            <span class="eyebrow">PRODUTO FINAL GRIEL</span>
-            <h2>Um painel pensado para leigos, com visual forte e sinal <em>na cara</em>.</h2>
-            <p>
-              Cada oportunidade mostra: <strong>o que apostar</strong>, <strong>qual mercado está sendo analisado</strong>,
-              <strong>o que precisa acontecer</strong>, <strong>por que o sinal apareceu</strong> e <strong>quais riscos existem</strong>.
-            </p>
+            <div class="hero-badge"><span></span> CENTRAL GRIEL LIVE</div>
+            <h2>Partida, mercado e sinal em uma única tela.</h2>
+            <p>Dados reais, eventos oficiais, estatísticas, escalações, odds ao vivo e análise GRIEL. Nada de partidas inventadas no modo de produção.</p>
             <div class="hero-actions">
-              <button class="primary" data-go="signals">Ver sinais agora</button>
-              <button class="secondary" data-go="academy">Aprender os mercados</button>
+              <button class="btn primary" data-go="live">Abrir jogos ao vivo</button>
+              <button class="btn secondary" data-go="signals">Ver sinais validados</button>
             </div>
           </div>
-          <div class="hero-side">
-            <div class="hero-mini-card" id="heroSignalSummary">
-              <span class="eyebrow" id="heroSignalEyebrow">MOTOR GRIEL</span>
-              <strong id="heroSignalLabel">ANÁLISE VALIDADA</strong>
-              <b id="heroSignalBet">Aguardando análise real</b>
-              <p id="heroSignalText">Em modo LIVE, o GRIEL só transforma uma partida em sinal após cruzar dados reais do jogo com um mercado disponível.</p>
-            </div>
-            <div class="hero-mini-grid">
-              <div><span>Sinais hoje</span><b id="statSignals">0</b></div>
-              <div><span>Jogos live</span><b id="statMatches">0</b></div>
-              <div><span>Mercados ativos</span><b id="statMarkets">0</b></div>
-              <div><span>Alertas</span><b id="statAlerts">0</b></div>
-            </div>
+          <div class="system-grid">
+            <div class="system-card accent"><span>JOGOS AO VIVO</span><b id="dashLiveCount">0</b><small id="dashLiveSub">Aguardando feed</small></div>
+            <div class="system-card"><span>SINAIS GERADOS</span><b id="dashSignalCount">0</b><small>Nesta sessão</small></div>
+            <div class="system-card"><span>ÚLTIMA SYNC</span><b id="dashSync">—</b><small>Feed principal</small></div>
+            <div class="system-card"><span>COTA RESTANTE</span><b id="dashQuota">—</b><small>API-FOOTBALL</small></div>
           </div>
         </div>
 
-        <div class="warning-box">
-          <strong>Importante:</strong>
-          <span>
-            O GRIEL usa <b>dados reais</b> pelo backend seguro. Em LIVE, o sistema não cria recomendação apenas pelo placar: o botão <b>Analisar agora</b>
-            cruza estatísticas e odds disponíveis antes de liberar um sinal. Se os dados forem insuficientes, o GRIEL informa que não há sinal validado.
-          </span>
-        </div>
-
-        <div class="dashboard-grid">
-          <article class="panel spotlight-panel">
+        <div class="dashboard-layout">
+          <article class="panel live-radar-panel">
             <div class="panel-head">
               <div>
-                <span class="eyebrow">SINAL EM DESTAQUE</span>
-                <h3>Melhor oportunidade explicada</h3>
+                <span class="eyebrow">RADAR AO VIVO</span>
+                <h3>Partidas acontecendo agora</h3>
               </div>
-              <button class="ghost" data-go="signals">Abrir todos</button>
+              <button class="btn ghost" data-go="live">Ver todas</button>
+            </div>
+            <div id="dashboardLiveList" class="dashboard-live-list"></div>
+          </article>
+
+          <article class="panel featured-panel">
+            <div class="panel-head">
+              <div>
+                <span class="eyebrow">GRIEL ENGINE</span>
+                <h3>Sinal em destaque</h3>
+              </div>
             </div>
             <div id="featuredSignal"></div>
           </article>
-
-          <article class="panel compact-panel">
-            <div class="panel-head">
-              <div>
-                <span class="eyebrow">CHECKLIST DO CLIENTE</span>
-                <h3>Antes de qualquer entrada</h3>
-              </div>
-            </div>
-            <div class="checklist">
-              <p>✓ Leia primeiro o campo <b>O que apostar</b>.</p>
-              <p>✓ Confira se o jogo e o minuto estão corretos.</p>
-              <p>✓ Veja o campo <b>Condição para vencer</b>.</p>
-              <p>✓ Analise a odd, o risco e a pontuação GRIEL.</p>
-              <p>✓ Nunca trate o sinal como garantia de lucro.</p>
-              <p>✓ Use banca controlada e jogo responsável.</p>
-            </div>
-          </article>
         </div>
 
-        <div class="quick-panels">
-          <article class="panel">
-            <div class="panel-head">
-              <div>
-                <span class="eyebrow">RESUMO RÁPIDO</span>
-                <h3>Outros sinais claros</h3>
-              </div>
-            </div>
-            <div id="miniSignals" class="mini-signal-list"></div>
-          </article>
-
-          <article class="panel">
-            <div class="panel-head">
-              <div>
-                <span class="eyebrow">MERCADOS MAIS COMUNS</span>
-                <h3>O que seu cliente pode encontrar</h3>
-              </div>
-            </div>
-            <div class="market-chips" id="marketChips"></div>
-          </article>
+        <div class="panel system-panel">
+          <div class="system-line">
+            <div><span class="tiny-dot ok"></span><b>Feed protegido</b><small>Chave API somente na Netlify Function</small></div>
+            <div><span class="tiny-dot ok"></span><b>Atualização live</b><small>15 s conforme feed do provedor</small></div>
+            <div><span class="tiny-dot ok"></span><b>Detalhe completo</b><small>Eventos + estatísticas + escalações + jogadores</small></div>
+            <div><span class="tiny-dot warn"></span><b>Odds</b><small>Disponibilidade varia por competição/bookmaker</small></div>
+          </div>
         </div>
-      </section>
-
-      <section class="page" id="signals">
-        <div class="toolbar three-col">
-          <input id="searchSignals" type="text" placeholder="Buscar time, jogo, mercado ou frase de aposta">
-          <select id="marketFilter">
-            <option value="">Todos os mercados</option>
-          </select>
-          <select id="scoreFilter">
-            <option value="0">Qualquer pontuação</option>
-            <option value="70">70+ pontos</option>
-            <option value="80">80+ pontos</option>
-            <option value="90">90+ pontos</option>
-          </select>
-        </div>
-
-        <div class="legend-box">
-          <div><strong>Como interpretar:</strong> o bloco <b>O que apostar</b> mostra exatamente a sugestão do mercado analisado.</div>
-          <div><strong>Exemplo:</strong> se aparecer <b>“Apostar: Over 2.5 gols”</b>, o jogo precisa terminar com <b>3 ou mais gols</b>.</div>
-        </div>
-
-        <div id="signalList" class="signal-grid"></div>
       </section>
 
       <section class="page" id="live">
-        <div class="toolbar two-col">
-          <input id="searchMatches" type="text" placeholder="Buscar jogo ao vivo...">
-          <select id="leagueFilter">
-            <option value="">Todas as ligas</option>
+        <div class="page-intro">
+          <div>
+            <span class="eyebrow">MATCH FEED</span>
+            <h2>Jogos ao vivo</h2>
+            <p>Placar e eventos atualizados automaticamente. Abra a Central da Partida para os detalhes completos.</p>
+          </div>
+          <div class="feed-meta" id="feedMeta">Sincronizando...</div>
+        </div>
+        <div class="toolbar two">
+          <input id="matchSearch" type="search" placeholder="Buscar time, liga ou país...">
+          <select id="leagueFilter"><option value="">Todas as competições</option></select>
+        </div>
+        <div id="liveGrid" class="live-grid"></div>
+      </section>
+
+      <section class="page" id="signals">
+        <div class="page-intro">
+          <div>
+            <span class="eyebrow">SINAIS VALIDADOS</span>
+            <h2>O que apostar</h2>
+            <p>Um sinal só aparece depois de cruzar estatísticas reais com um mercado live disponível.</p>
+          </div>
+        </div>
+        <div class="toolbar three">
+          <input id="signalSearch" type="search" placeholder="Buscar time ou mercado...">
+          <select id="signalMarketFilter"><option value="">Todos os mercados</option></select>
+          <select id="signalScoreFilter">
+            <option value="0">Qualquer pontuação</option>
+            <option value="70">70+</option>
+            <option value="80">80+</option>
+            <option value="90">90+</option>
           </select>
         </div>
-
-        <div class="live-grid" id="liveMatches"></div>
+        <div id="signalGrid" class="signal-grid"></div>
       </section>
 
       <section class="page" id="markets">
-        <div class="panel">
-          <div class="panel-head">
-            <div>
-              <span class="eyebrow">CATÁLOGO COMPLETO</span>
-              <h3>Mercados que o GRIEL pode exibir</h3>
-            </div>
+        <div class="page-intro">
+          <div>
+            <span class="eyebrow">MERCADOS</span>
+            <h2>Mercados monitorados pelo motor</h2>
+            <p>O GRIEL só recomenda mercados que estejam realmente presentes na resposta de odds do jogo.</p>
           </div>
-          <div id="marketCatalog" class="catalog-grid"></div>
         </div>
+        <div id="marketCatalog" class="catalog-grid"></div>
       </section>
 
       <section class="page" id="academy">
-        <div class="academy-hero">
-          <span class="eyebrow">GRIEL ACADEMY</span>
-          <h2>Explique fácil até para quem nunca apostou</h2>
-          <p>Guia rápido para seus clientes entenderem os principais mercados mostrados na plataforma.</p>
+        <div class="page-intro">
+          <div>
+            <span class="eyebrow">GRIEL ACADEMY</span>
+            <h2>Entenda cada entrada</h2>
+            <p>Explicações objetivas para o cliente saber exatamente o que precisa acontecer.</p>
+          </div>
         </div>
-
-        <div id="academyCards" class="academy-grid"></div>
-
-        <div class="academy-tools">
-          <article class="panel">
-            <div class="panel-head">
-              <div>
-                <span class="eyebrow">CALCULADORA</span>
-                <h3>Retorno bruto</h3>
-              </div>
-            </div>
-            <div class="calc-grid">
-              <label>
-                Valor apostado (R$)
-                <input type="number" id="stakeInput" min="0" step="1" value="20">
-              </label>
-              <label>
-                Odd
-                <input type="number" id="oddInput" min="1.01" step="0.01" value="1.80">
-              </label>
-              <div class="calc-result">
-                <span>Retorno bruto se vencer</span>
-                <strong id="calcOutput">R$ 36,00</strong>
-                <small>Inclui o valor apostado.</small>
-              </div>
-            </div>
-          </article>
-
-          <article class="panel">
-            <div class="panel-head">
-              <div>
-                <span class="eyebrow">LINGUAGEM SIMPLES</span>
-                <h3>Frases prontas para o cliente</h3>
-              </div>
-            </div>
-            <div class="phrase-list" id="phraseList"></div>
-          </article>
+        <div id="academyGrid" class="academy-grid"></div>
+        <div class="panel calculator-panel">
+          <div class="panel-head"><div><span class="eyebrow">CALCULADORA</span><h3>Retorno bruto</h3></div></div>
+          <div class="calc-grid">
+            <label>Valor apostado (R$)<input id="stakeInput" type="number" min="0" step="1" value="20"></label>
+            <label>Odd<input id="oddInput" type="number" min="1.01" step="0.01" value="1.80"></label>
+            <div class="calc-output"><span>Retorno bruto</span><b id="returnOutput">R$ 36,00</b><small>Inclui o valor apostado.</small></div>
+          </div>
         </div>
       </section>
 
       <section class="page" id="history">
-        <div class="panel">
-          <div class="panel-head">
-            <div>
-              <span class="eyebrow">TRANSPARÊNCIA</span>
-              <h3>Histórico dos sinais</h3>
-            </div>
-            <button class="ghost" id="exportCsv">Exportar CSV</button>
-          </div>
-          <p class="muted-text">Use esta área para mostrar desempenho histórico sem esconder resultados negativos. Transparência aumenta credibilidade.</p>
+        <div class="page-intro">
+          <div><span class="eyebrow">TRANSPARÊNCIA</span><h2>Histórico local de sinais</h2><p>Registra os sinais gerados neste navegador. Não inventa resultados ou greens.</p></div>
+          <div class="intro-actions"><button class="btn ghost" id="exportHistory">Exportar CSV</button><button class="btn danger" id="clearHistory">Limpar</button></div>
+        </div>
+        <div class="panel table-panel">
           <div class="table-wrap">
             <table>
-              <thead>
-                <tr>
-                  <th>Data</th>
-                  <th>Jogo</th>
-                  <th>O que apostar</th>
-                  <th>Odd</th>
-                  <th>Pontos</th>
-                  <th>Status</th>
-                </tr>
-              </thead>
+              <thead><tr><th>Horário</th><th>Jogo</th><th>Entrada</th><th>Odd</th><th>GRIEL</th><th>Status</th></tr></thead>
               <tbody id="historyRows"></tbody>
             </table>
           </div>
@@ -269,90 +195,45 @@
       <section class="page" id="settings">
         <div class="settings-grid">
           <article class="panel">
-            <div class="panel-head">
-              <div>
-                <span class="eyebrow">ENGINE</span>
-                <h3>Regras do scanner</h3>
-              </div>
-            </div>
-            <label class="form-line">
-              Pontuação mínima do sinal
-              <div class="form-inline">
-                <input type="range" id="minScore" min="50" max="95" value="72">
-                <output id="minScoreOut">72</output>
-              </div>
-            </label>
-            <label class="form-line">
-              Odd mínima
-              <input type="number" id="minOdd" min="1.01" step="0.01" value="1.45">
-            </label>
-            <label class="form-line">
-              Odd máxima
-              <input type="number" id="maxOdd" min="1.01" step="0.01" value="2.80">
-            </label>
-            <label class="checkbox-line"><input type="checkbox" id="onlyLive" checked> Exibir somente eventos ao vivo</label>
-            <button class="primary" id="saveSettings">Salvar configurações</button>
+            <div class="panel-head"><div><span class="eyebrow">ENGINE</span><h3>Filtros do sinal</h3></div></div>
+            <label class="form-line">Pontuação mínima<div class="range-line"><input id="minScore" type="range" min="60" max="95" value="72"><output id="minScoreOut">72</output></div></label>
+            <label class="form-line">Odd mínima<input id="minOdd" type="number" min="1.01" step="0.01" value="1.35"></label>
+            <label class="form-line">Odd máxima<input id="maxOdd" type="number" min="1.01" step="0.01" value="3.00"></label>
+            <button class="btn primary" id="saveSettings">Salvar</button>
           </article>
-
           <article class="panel">
-            <div class="panel-head">
-              <div>
-                <span class="eyebrow">GRIEL LIVE</span>
-                <h3>Conexão com dados reais</h3>
-              </div>
+            <div class="panel-head"><div><span class="eyebrow">STATUS</span><h3>Infraestrutura</h3></div></div>
+            <div id="apiStatus" class="api-status">Verificando backend...</div>
+            <div class="status-list">
+              <div><span>Frontend</span><b>Netlify CDN</b></div>
+              <div><span>Backend</span><b>Netlify Function</b></div>
+              <div><span>Provedor</span><b>API-FOOTBALL</b></div>
+              <div><span>Chave</span><b>Protegida no servidor</b></div>
             </div>
-            <div class="integration-note" id="apiStatus">Verificando backend seguro da GRIEL...</div>
-            <div class="checklist" style="margin-top:12px">
-              <p>✓ A chave da API fica somente no servidor da Netlify.</p>
-              <p>✓ O navegador nunca recebe sua API Key.</p>
-              <p>✓ Jogos ao vivo usam cache para economizar a cota do plano.</p>
-              <p>✓ Odds e estatísticas são consultadas sob demanda.</p>
-            </div>
-            <button class="secondary" id="testApiBtn" style="margin-top:14px">Testar GRIEL Live</button>
+            <button class="btn secondary" id="testBackend">Testar conexão</button>
           </article>
-
-          <article class="panel full-span">
-            <div class="panel-head">
-              <div>
-                <span class="eyebrow">MARCA & DIREITOS</span>
-                <h3>Identidade GRIEL</h3>
-              </div>
+          <article class="panel full">
+            <div class="panel-head"><div><span class="eyebrow">PRODUÇÃO</span><h3>Comportamento da atualização</h3></div></div>
+            <div class="production-grid">
+              <div><b>Feed ao vivo</b><span>15 s. Enquanto a Central da Partida está aberta, o feed geral pausa para economizar cota.</span></div>
+              <div><b>Central da partida</b><span>15 s. Um único endpoint traz eventos, estatísticas, escalações e jogadores.</span></div>
+              <div><b>Odds live</b><span>30 s no plano Free e 15 s quando o limite por minuto do plano for maior.</span></div>
+              <div><b>Contexto</b><span>Prediction + H2H somente quando o cliente abre a aba Contexto.</span></div>
             </div>
-            <p>
-              Esta versão usa a marca visual <strong>GRIEL Signals</strong> em toda a interface e o projeto foi montado com identidade própria.
-              Isso ajuda na apresentação comercial, mas <strong>registro jurídico exclusivo da marca</strong> e demais proteções formais dependem de procedimento legal apropriado.
-            </p>
-            <p>
-              Para produção real, o ideal é adicionar: backend seguro, autenticação, banco de dados, planos de assinatura, área administrativa,
-              termos de uso, política de privacidade, notificações push/Telegram e integração com um provedor licenciado de dados esportivos/odds.
-            </p>
           </article>
         </div>
       </section>
     </main>
   </div>
 
-
-  <dialog id="matchCenterModal" class="market-modal match-center-modal">
-    <div class="modal-head">
-      <div>
-        <span class="eyebrow">GRIEL MATCH CENTER</span>
-        <h3 id="centerTitle">Partida</h3>
+  <dialog id="matchModal" class="match-modal">
+    <div class="modal-shell">
+      <div class="modal-top">
+        <div><span class="eyebrow">GRIEL MATCH CENTER</span><h2 id="matchModalTitle">Partida</h2></div>
+        <button class="icon-btn" id="closeMatchModal">✕</button>
       </div>
-      <button class="icon-btn" id="closeCenter">✕</button>
+      <div id="matchModalBody" class="match-modal-body"></div>
     </div>
-    <div id="centerBody" class="modal-body center-body"></div>
-  </dialog>
-
-  <dialog id="marketModal" class="market-modal">
-    <div class="modal-head">
-      <div>
-        <span class="eyebrow">MERCADOS DO JOGO</span>
-        <h3 id="modalTitle">Jogo</h3>
-      </div>
-      <button class="icon-btn" id="closeModal">✕</button>
-    </div>
-    <div id="modalBody" class="modal-body"></div>
   </dialog>
 
   <div class="toast" id="toast"></div>
