@@ -22,7 +22,7 @@ function cacheHeaders(ttl = 0) {
   };
 
   if (ttl > 0) {
-    base['Netlify-CDN-Cache-Control'] = `public, durable, max-age=${ttl}`;
+    base['Netlify-CDN-Cache-Control'] = `public, durable, s-maxage=${ttl}, must-revalidate`;
     base['Netlify-Vary'] = 'query';
   }
 
@@ -144,7 +144,7 @@ exports.handler = async function handler(event) {
       return json(200, {
         ok: true,
         service: 'GRIEL Live Backend',
-        version: '9.0',
+        version: '10.0',
         configured: Boolean(process.env.API_FOOTBALL_KEY),
         now: new Date().toISOString()
       }, 30);
@@ -153,6 +153,7 @@ exports.handler = async function handler(event) {
     // Heartbeat principal: um único request retorna todos os jogos live + eventos atuais.
     if (action === 'live') {
       const { payload, quota } = await apiFetch('/fixtures?live=all');
+      const bypass = Boolean(query._fresh);
       return json(200, {
         ok: true,
         source: 'api-football',
@@ -160,7 +161,7 @@ exports.handler = async function handler(event) {
         quota,
         results: payload.results || 0,
         response: Array.isArray(payload.response) ? payload.response : []
-      }, 15);
+      }, bypass ? 0 : 12);
     }
 
     // Um único request por partida retorna fixture, eventos, estatísticas, escalações e jogadores.
@@ -169,6 +170,7 @@ exports.handler = async function handler(event) {
       if (!id) return json(400, { ok: false, error: 'fixture inválido.' });
 
       const { payload, quota } = await apiFetch(`/fixtures?id=${id}`);
+      const bypass = Boolean(query._fresh);
       return json(200, {
         ok: true,
         source: 'api-football',
@@ -177,7 +179,7 @@ exports.handler = async function handler(event) {
         quota,
         results: payload.results || 0,
         response: Array.isArray(payload.response) ? payload.response : []
-      }, 15);
+      }, bypass ? 0 : 12);
     }
 
     // Odds ao vivo. Só é consultado quando o usuário abre a aba de odds/análise.
@@ -186,6 +188,7 @@ exports.handler = async function handler(event) {
       if (!id) return json(400, { ok: false, error: 'fixture inválido.' });
 
       const { payload, quota } = await apiFetch(`/odds/live?fixture=${id}`);
+      const bypass = Boolean(query._fresh);
       return json(200, {
         ok: true,
         source: 'api-football',
@@ -194,7 +197,7 @@ exports.handler = async function handler(event) {
         quota,
         results: payload.results || 0,
         response: Array.isArray(payload.response) ? payload.response : []
-      }, 15);
+      }, bypass ? 0 : 20);
     }
 
     // Contexto pré-jogo sob demanda: prediction + últimos confrontos diretos.
