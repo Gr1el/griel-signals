@@ -114,6 +114,21 @@ exports.handler = async function handler(event) {
       }, 60);
     }
 
+    if (action === 'matchcenter') {
+      const fixture = fixtureIdFrom(event.queryStringParameters);
+      if (!fixture) return json(400, { ok: false, error: 'fixture inválido.' });
+      const { data, quota } = await apiFetch(`/fixtures?id=${fixture}`);
+      return json(200, {
+        ok: true,
+        source: 'api-football',
+        fixture,
+        updatedAt: new Date().toISOString(),
+        quota,
+        results: data.results || 0,
+        response: Array.isArray(data.response) ? data.response : []
+      }, 15);
+    }
+
     if (action === 'prediction') {
       const fixture = fixtureIdFrom(event.queryStringParameters);
       if (!fixture) return json(400, { ok: false, error: 'fixture inválido.' });
